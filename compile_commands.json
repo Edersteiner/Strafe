@@ -1,0 +1,16 @@
+[
+{
+  "directory": "/home/eder/Strafe",
+  "arguments": ["/usr/bin/g++", "-c", "-m64", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-std=c++20", "-Iinclude", "-DVK_NO_PROTOTYPES", "-DGLM_FORCE_DEPTH_ZERO_TO_ONE", "-I", "/home/eder/.xmake/packages/v/volk/1.4.335+0/c9b109b40c554c8ca20ac48b49546018/include", "-I", "/home/eder/.xmake/packages/v/vulkan-memory-allocator/v3.4.0/c83ce8b4ddf142759ead9e49f56e3157/include", "-I", "/home/eder/.xmake/packages/v/vulkan-headers/1.4.335+0/a1c87328203147cfa4c5272cf78b6d5b/include", "-I", "/home/eder/.xmake/packages/l/libsdl3/3.4.16/237ba940606c41c9beb590a5f6257f5c/include", "-I", "/home/eder/.xmake/packages/o/opengl-headers/2024.01.04/59ed79d7030a4b298d033d457b08e5ff/include", "-I", "/home/eder/.xmake/packages/e/egl-headers/2023.12.16/cd777b21b8c84268bf5e21c2813eae03/include", "-I", "/home/eder/.xmake/packages/g/glm/1.0.3/dbf9c4e3c02245fb83daec08ad7da1e6/include", "-DNDEBUG", "-o", "build/.objs/Strafe/linux/x86_64/release/src/main.cpp.o", "src/main.cpp"],
+  "file": "src/main.cpp"
+},
+{
+  "directory": "/home/eder/Strafe",
+  "arguments": ["/usr/bin/g++", "-c", "-m64", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-std=c++20", "-Iinclude", "-DVK_NO_PROTOTYPES", "-DGLM_FORCE_DEPTH_ZERO_TO_ONE", "-I", "/home/eder/.xmake/packages/v/volk/1.4.335+0/c9b109b40c554c8ca20ac48b49546018/include", "-I", "/home/eder/.xmake/packages/v/vulkan-memory-allocator/v3.4.0/c83ce8b4ddf142759ead9e49f56e3157/include", "-I", "/home/eder/.xmake/packages/v/vulkan-headers/1.4.335+0/a1c87328203147cfa4c5272cf78b6d5b/include", "-I", "/home/eder/.xmake/packages/l/libsdl3/3.4.16/237ba940606c41c9beb590a5f6257f5c/include", "-I", "/home/eder/.xmake/packages/o/opengl-headers/2024.01.04/59ed79d7030a4b298d033d457b08e5ff/include", "-I", "/home/eder/.xmake/packages/e/egl-headers/2023.12.16/cd777b21b8c84268bf5e21c2813eae03/include", "-I", "/home/eder/.xmake/packages/g/glm/1.0.3/dbf9c4e3c02245fb83daec08ad7da1e6/include", "-DNDEBUG", "-o", "build/.objs/Strafe/linux/x86_64/release/src/core/application.cpp.o", "src/core/application.cpp"],
+  "file": "src/core/application.cpp"
+},
+{
+  "directory": "/home/eder/Strafe",
+  "arguments": ["/usr/bin/g++", "-c", "-m64", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-std=c++20", "-Iinclude", "-DVK_NO_PROTOTYPES", "-DGLM_FORCE_DEPTH_ZERO_TO_ONE", "-I", "/home/eder/.xmake/packages/v/volk/1.4.335+0/c9b109b40c554c8ca20ac48b49546018/include", "-I", "/home/eder/.xmake/packages/v/vulkan-memory-allocator/v3.4.0/c83ce8b4ddf142759ead9e49f56e3157/include", "-I", "/home/eder/.xmake/packages/v/vulkan-headers/1.4.335+0/a1c87328203147cfa4c5272cf78b6d5b/include", "-I", "/home/eder/.xmake/packages/l/libsdl3/3.4.16/237ba940606c41c9beb590a5f6257f5c/include", "-I", "/home/eder/.xmake/packages/o/opengl-headers/2024.01.04/59ed79d7030a4b298d033d457b08e5ff/include", "-I", "/home/eder/.xmake/packages/e/egl-headers/2023.12.16/cd777b21b8c84268bf5e21c2813eae03/include", "-I", "/home/eder/.xmake/packages/g/glm/1.0.3/dbf9c4e3c02245fb83daec08ad7da1e6/include", "-DNDEBUG", "-o", "build/.objs/Strafe/linux/x86_64/release/src/core/log.cpp.o", "src/core/log.cpp"],
+  "file": "src/core/log.cpp"
+}]

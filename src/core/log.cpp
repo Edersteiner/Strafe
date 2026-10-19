@@ -1,0 +1,84 @@
+#include "core/log.h"
+
+#include <chrono>
+#include <cstdio>
+#include <iterator>
+#include <string>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
+namespace strafe::log {
+
+namespace detail {
+std::atomic<Level> g_level{kCompiledLevel};
+} // namespace detail
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+
+const Clock::time_point kStart = Clock::now();
+
+struct LevelStyle {
+  std::string_view name;
+  std::string_view color;
+};
+
+constexpr LevelStyle kStyles[] = {
+    {"TRACE", "\x1b[90m"}, {"DEBUG", "\x1b[36m"}, {"INFO ", "\x1b[32m"},
+    {"WARN ", "\x1b[33m"}, {"ERROR", "\x1b[31m"},
+};
+
+bool use_color() {
+#ifdef _WIN32
+  return false;
+#else
+  static const bool tty = isatty(fileno(stderr));
+  return tty;
+#endif
+}
+
+std::string_view file_name(const char *path) {
+  const std::string_view view = path;
+  const std::size_t slash = view.find_last_of("/\\");
+  return slash == std::string_view::npos ? view : view.substr(slash + 1);
+}
+
+} // namespace
+
+void set_level(Level level) {
+  detail::g_level.store(level, std::memory_order_relaxed);
+}
+
+Level get_level() { return detail::g_level.load(std::memory_order_relaxed); }
+
+void detail::vwrite(Level level, std::source_location location,
+                    std::string_view fmt, std::format_args args) {
+  // Reused per thread so steady-state logging does not allocate.
+  thread_local std::string buffer;
+  buffer.clear();
+
+  const auto elapsed =
+      std::chrono::duration<double>(Clock::now() - kStart).count();
+  const LevelStyle &style = kStyles[static_cast<std::size_t>(level)];
+  const bool color = use_color();
+
+  auto out = std::back_inserter(buffer);
+  std::format_to(out, "[{:10.3f}] ", elapsed);
+  const std::string_view file = file_name(location.file_name());
+  if (color) {
+    std::format_to(out, "{}{}\x1b[0m \x1b[90m{}:{}\x1b[0m ", style.color,
+                   style.name, file, location.line());
+  } else {
+    std::format_to(out, "{} {}:{} ", style.name, file, location.line());
+  }
+  std::vformat_to(out, fmt, args);
+  buffer.push_back('\n');
+
+  // One fwrite per line keeps lines from interleaving across threads.
+  std::fwrite(buffer.data(), 1, buffer.size(), stderr);
+}
+
+} // namespace strafe::log
