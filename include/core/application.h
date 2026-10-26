@@ -27,6 +27,7 @@ private:
   bool initializeVMA();
   bool createSwapchain(int width, int height);
   void destroySwapchain();
+  bool createShaders();
 
   void render();
 

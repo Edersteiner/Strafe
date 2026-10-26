@@ -91,7 +91,7 @@ bool Application::initializeVulkan() {
     return false;
   }
   if (!createSwapchain(width_, height_)) {
-    log::error("Failed to create swapwchain");
+    log::error("Failed to create swapchain");
     return false;
   }
   return true;

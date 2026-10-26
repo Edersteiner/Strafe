@@ -11,6 +11,10 @@ add_requires("volk " .. vulkan_sdk)
 add_requires("vulkan-memory-allocator v3.4.0")
 -- VMA depends on unversioned vulkan-headers. Pin it to the same SDK.
 add_requireconfs("**.vulkan-headers", { override = true, version = vulkan_sdk })
+add_requires("shaderc v2024.1")
+-- shaderc depends on unversioned glslang and SPIR-V packages. Pin them to the same SDK.
+add_requireconfs("shaderc.glslang", "shaderc.spirv-tools", "shaderc.spirv-headers",
+    { override = true, version = vulkan_sdk })
 add_requires("libsdl3 3.4.16")
 add_requires("glm 1.0.3")
 
@@ -19,7 +23,7 @@ target("Strafe")
     set_kind("binary")
     add_files("src/**.cpp")
     add_includedirs("include/", { public = true })
-    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "libsdl3", "glm")
+    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "shaderc", "libsdl3", "glm")
 
     -- volk loads the Vulkan loader at runtime, so nothing links against it.
     add_defines("VK_NO_PROTOTYPES")
