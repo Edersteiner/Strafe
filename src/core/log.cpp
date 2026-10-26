@@ -5,7 +5,11 @@
 #include <iterator>
 #include <string>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -33,7 +37,16 @@ constexpr LevelStyle kStyles[] = {
 
 bool use_color() {
 #ifdef _WIN32
-  return false;
+  static const bool console = [] {
+    const HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
+    DWORD mode = 0;
+    if (handle == INVALID_HANDLE_VALUE || !GetConsoleMode(handle, &mode)) {
+      return false;
+    }
+    return SetConsoleMode(handle,
+                          mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+  }();
+  return console;
 #else
   static const bool tty = isatty(fileno(stderr));
   return tty;

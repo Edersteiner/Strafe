@@ -3,6 +3,9 @@
 #include <SDL3/SDL.h>
 #include <volk.h>
 
+// Include after volk. The implementation is compiled in src/core/vma.cpp.
+#include <vk_mem_alloc.h>
+
 namespace strafe {
 class Application {
 public:
@@ -19,6 +22,7 @@ private:
   VkPhysicalDevice findPhysicalDevice();
   bool findGraphicsQueue();
   bool createDevice(VkPhysicalDevice physical_device);
+  bool initializeVMA();
 
   void render();
 
@@ -36,5 +40,7 @@ private:
 
   uint32_t gfx_queue_fam_idx_ = UINT32_MAX;
   VkQueue gfx_queue_ = VK_NULL_HANDLE;
+
+  VmaAllocator vma_allocator_ = VK_NULL_HANDLE;
 };
 } // namespace strafe

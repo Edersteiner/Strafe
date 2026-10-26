@@ -80,6 +80,10 @@ bool Application::initializeVulkan() {
     log::error("Failed to create logical GPU device");
     return false;
   }
+  if (!initializeVMA()) {
+      log::error("Failed to initialize VMA");
+      return false;
+  }
   return true;
 }
 
@@ -241,10 +245,6 @@ bool Application::createDevice(VkPhysicalDevice physical_device) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
       .pNext = &supported_features_12};
 
-  // device specific extensions
-  const std::vector<const char *> device_extensions{
-      VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-
   // request queues
   std::vector<float> queue_priorities{1.0f};
   VkDeviceQueueCreateInfo gfx_queue_info{
@@ -252,6 +252,10 @@ bool Application::createDevice(VkPhysicalDevice physical_device) {
       .queueFamilyIndex = gfx_queue_fam_idx_,
       .queueCount = 1,
       .pQueuePriorities = queue_priorities.data()};
+
+  // device specific extensions
+  const std::vector<const char *> device_extensions{
+      VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
   VkDeviceCreateInfo dev_create_info{
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -275,7 +279,28 @@ bool Application::createDevice(VkPhysicalDevice physical_device) {
   return true;
 }
 
+bool Application::initializeVMA() {
+  VmaVulkanFunctions vma_func_info{};
+  VmaAllocatorCreateInfo vma_alloc_info{
+    .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+    .physicalDevice = physical_device_,
+    .device = device_,
+    .pVulkanFunctions = &vma_func_info,
+    .instance = vulkan_instance_,
+    .vulkanApiVersion = kVulkanVersion
+  };
+
+  vmaImportVulkanFunctionsFromVolk(&vma_alloc_info, &vma_func_info);
+
+  if (vmaCreateAllocator(&vma_alloc_info, &vma_allocator_) != VK_SUCCESS) {
+    return false;
+  }
+  return true;
+}
+
 void Application::run() {
+  log::info("hello!");
+  log::error("evil hello!");
   running_ = true;
   while (running_) {
     SDL_Event event{0};
@@ -296,13 +321,16 @@ void Application::run() {
 void Application::render() {}
 
 void Application::shutdown() {
+  if (vma_allocator_) {
+    vmaDestroyAllocator(vma_allocator_);
+  }
+  if (surface_) {
+    vkDestroySurfaceKHR(vulkan_instance_, surface_, nullptr);
+  }
   if (device_) {
     vkDestroyDevice(device_, nullptr);
   }
   if (vulkan_instance_) {
-    if (surface_) {
-      vkDestroySurfaceKHR(vulkan_instance_, surface_, nullptr);
-    }
     vkDestroyInstance(vulkan_instance_, nullptr);
   }
   volkFinalize();
