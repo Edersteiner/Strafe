@@ -2,11 +2,15 @@
 
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL.h>
+#include <string>
 #include <vector>
 #include <volk.h>
 
 // Include after volk. The implementation is compiled in src/core/vma.cpp.
 #include <vk_mem_alloc.h>
+
+// Todo: replace shaderc and glsl with Slang.
+#include <shaderc/shaderc.hpp>
 
 namespace strafe {
 class Application {
@@ -28,6 +32,8 @@ private:
   bool createSwapchain(int width, int height);
   void destroySwapchain();
   bool createShaders();
+  VkShaderModule createShaderModule(const std::string &file_name, shaderc_shader_kind kind) const;
+  VkPipeline createGraphicsPipeline();
 
   void render();
 
@@ -62,5 +68,9 @@ private:
   VmaAllocation depth_image_allocation = VK_NULL_HANDLE;
   VkFormat depth_format_ = VK_FORMAT_D32_SFLOAT;
 
+  VkShaderModule vert_shader = VK_NULL_HANDLE;
+  VkShaderModule frag_shader = VK_NULL_HANDLE;
+
+  VkPipeline pipeline_ = VK_NULL_HANDLE;
 };
 } // namespace strafe

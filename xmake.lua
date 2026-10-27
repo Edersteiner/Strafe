@@ -18,6 +18,14 @@ add_requireconfs("shaderc.glslang", "shaderc.spirv-tools", "shaderc.spirv-header
 add_requires("libsdl3 3.4.16")
 add_requires("glm 1.0.3")
 
+-- Copies runtime files like shaders and assets to the build location
+task("stage_runtime_files")
+  on_run(function (targetDir)
+    os.cp("$(projectdir)/assets", targetDir)
+    os.cp("$(projectdir)/shaders", targetDir)
+    cprint("${green}[+]${clear} Staged runtime files")
+  end)
+
 target("Strafe")
     set_languages("c++20")
     set_kind("binary")
@@ -29,3 +37,8 @@ target("Strafe")
     add_defines("VK_NO_PROTOTYPES")
     -- Vulkan clip space uses a [0, 1] depth range.
     add_defines("GLM_FORCE_DEPTH_ZERO_TO_ONE")
+
+    after_build(function (target)
+      import("core.project.task")
+      task.run("stage_runtime_files", {}, target:targetdir())
+    end)

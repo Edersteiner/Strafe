@@ -7,6 +7,11 @@
 #include <vector>
 
 #include "core/log.h"
+#include "core/utils.h"
+#include "shaderc/shaderc.h"
+
+#include "shaderc/env.h"
+#include "shaderc/shaderc.hpp"
 #include "vulkan/vulkan_core.h"
 
 // Todo: actually abstract the rendering and not write everything in one file.
@@ -92,6 +97,14 @@ bool Application::initializeVulkan() {
   }
   if (!createSwapchain(width_, height_)) {
     log::error("Failed to create swapchain");
+    return false;
+  }
+  if (!createShaders()) {
+    log::error("Failed to create shaders");
+    return false;
+  }
+  if (pipeline_ = createGraphicsPipeline(); !pipeline_) {
+    log::error("Unable to initialize the graphics pipeline");
     return false;
   }
   return true;
@@ -454,6 +467,62 @@ void Application::destroySwapchain() {
     vmaDestroyImage(vma_allocator_, depth_image_, depth_image_allocation);
     depth_image_view = nullptr;
   }
+}
+
+bool Application::createShaders() {
+  if (vert_shader = createShaderModule("shader.vert", shaderc_vertex_shader); !vert_shader) {
+    return false;
+  }
+  if (frag_shader = createShaderModule("shader.frag", shaderc_fragment_shader); !frag_shader) {
+    return false;
+  }
+  return true;
+}
+
+VkShaderModule Application::createShaderModule(const std::string &file_name, shaderc_shader_kind kind) const {
+  // Read shader file from disk
+  const std::string shaderPath = "shaders/" + file_name;
+  const std::string src = utils::readTextFile(shaderPath);
+  if (src.empty()) {
+    log::error("Specified shader file doesn't exist: {}", shaderPath);
+    return nullptr;
+  }
+
+  // Compile shader to SPIR-V
+  log::info("Compiling shader: {}", shaderPath);
+  shaderc::Compiler compiler;
+  shaderc::CompileOptions opts;
+  // This version of shaderc does not include shaderc_env_version_vulkan_1_4, so I use 1_3 instead.
+  // This does not matter since Vulkan 1.4 did not add any new features to SPIR-V.
+  // And I will be switching this for Slang anyways further down the road.
+  opts.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
+  opts.SetTargetSpirv(shaderc_spirv_version_1_6);
+  opts.SetOptimizationLevel(shaderc_optimization_level_performance);
+  shaderc::CompilationResult result = compiler.CompileGlslToSpv(src, kind, file_name.c_str(), opts);
+
+  if (result.GetCompilationStatus() != shaderc_compilation_status_success) {
+    log::error("Shader Compilation Error: {}", result.GetErrorMessage());
+    return nullptr;
+  }
+
+  const size_t shader_size = (result.end() - result.cbegin()) * sizeof(uint32_t);
+
+  VkShaderModuleCreateInfo module_create_info {
+    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+    .codeSize = shader_size,
+    .pCode = result.cbegin()
+  };
+
+  VkShaderModule shader_module = VK_NULL_HANDLE;
+  if (vkCreateShaderModule(device_, &module_create_info, nullptr, &shader_module) != VK_SUCCESS) {
+    log::error("Error creating shader modulke");
+    return nullptr;
+  }
+  return shader_module;
+}
+
+VkPipeline Application::createGraphicsPipeline() {
+  return VK_NULL_HANDLE;
 }
 
 void Application::run() {
