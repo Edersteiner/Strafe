@@ -1,6 +1,5 @@
 #pragma once
 
-#include "vulkan/vulkan_core.h"
 #include <string>
 #include <vector>
 #include <array>
@@ -53,6 +52,9 @@ private:
 
   SDL_Window *window_ = nullptr;
   int width_ = 1280, height_ = 720;
+
+  uint32_t frame_index_ = 0;
+  uint64_t next_signal_value = kMaxFramesInFlight + 1;
 
   VkInstance vulkan_instance_ = VK_NULL_HANDLE;
 
