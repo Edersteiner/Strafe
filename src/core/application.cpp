@@ -107,6 +107,7 @@ bool Application::initializeVulkan() {
     log::error("Unable to initialize the graphics pipeline");
     return false;
   }
+
   return true;
 }
 
@@ -470,10 +471,10 @@ void Application::destroySwapchain() {
 }
 
 bool Application::createShaders() {
-  if (vert_shader = createShaderModule("shader.vert", shaderc_vertex_shader); !vert_shader) {
+  if (vert_shader_ = createShaderModule("shader.vert", shaderc_vertex_shader); !vert_shader_) {
     return false;
   }
-  if (frag_shader = createShaderModule("shader.frag", shaderc_fragment_shader); !frag_shader) {
+  if (frag_shader_ = createShaderModule("shader.frag", shaderc_fragment_shader); !frag_shader_) {
     return false;
   }
   return true;
@@ -522,7 +523,126 @@ VkShaderModule Application::createShaderModule(const std::string &file_name, sha
 }
 
 VkPipeline Application::createGraphicsPipeline() {
-  return VK_NULL_HANDLE;
+  VkPipelineLayoutCreateInfo pipeline_layout_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    .setLayoutCount = 0,
+    .pushConstantRangeCount = 0
+  };
+  if (vkCreatePipelineLayout(device_, &pipeline_layout_info, nullptr, &pipeline_layout_) != VK_SUCCESS) {
+    log::info("Failed to create pipeline layout");
+    return nullptr;
+  }
+
+  const char *entry_point = "main";
+  std::vector<VkPipelineShaderStageCreateInfo> shader_stages {
+    {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      .stage = VK_SHADER_STAGE_VERTEX_BIT,
+      .module = vert_shader_,
+      .pName = entry_point
+    },
+    {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+      .module = frag_shader_,
+      .pName = entry_point
+    }
+  };
+
+  // Vertex pulling
+  VkPipelineVertexInputStateCreateInfo vert_input_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+  };
+
+  // Input assembly
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+    .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+  };
+
+  // Depth stencil configuration
+  VkPipelineDepthStencilStateCreateInfo depth_stencil_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+    .depthTestEnable = VK_TRUE,
+    .depthWriteEnable = VK_TRUE,
+    .depthCompareOp = VK_COMPARE_OP_LESS,
+    .stencilTestEnable = VK_FALSE
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+    .viewportCount = 1,
+    .pViewports = nullptr,
+    .scissorCount = 1,
+    .pScissors = nullptr
+  };
+
+  VkPipelineRasterizationStateCreateInfo raster_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+    .polygonMode = VK_POLYGON_MODE_FILL,
+    .cullMode = VK_CULL_MODE_BACK_BIT,
+    .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+    .lineWidth = 1.0f,
+  };
+
+  VkPipelineMultisampleStateCreateInfo multi_sample_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+    .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT
+  };
+
+  VkPipelineColorBlendAttachmentState attach_state {
+    .blendEnable = VK_FALSE,
+    .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+      VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+  };
+
+  VkPipelineColorBlendStateCreateInfo blend_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+    .attachmentCount = 1,
+    .pAttachments = &attach_state
+  };
+
+  std::vector<VkDynamicState> dynamic_state {
+    VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR
+  };
+
+  VkPipelineDynamicStateCreateInfo dynamic_state_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+    .dynamicStateCount = static_cast<uint32_t>(dynamic_state.size()),
+    .pDynamicStates = dynamic_state.data()
+  };
+
+  VkPipelineRenderingCreateInfo render_info {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+    .colorAttachmentCount = 1,
+    .pColorAttachmentFormats = &swapchain_format_,
+    .depthAttachmentFormat = depth_format_
+  };
+
+  VkGraphicsPipelineCreateInfo pipeline_info {
+    .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+    .pNext = &render_info,
+    .stageCount = static_cast<uint32_t>(shader_stages.size()),
+    .pStages = shader_stages.data(),
+    .pVertexInputState = &vert_input_info,
+    .pInputAssemblyState = &input_assembly_info,
+    .pViewportState = &viewport_info,
+    .pRasterizationState = &raster_info,
+    .pMultisampleState = &multi_sample_info,
+    .pDepthStencilState = &depth_stencil_info,
+    .pColorBlendState = &blend_info,
+    .pDynamicState = &dynamic_state_info,
+    .layout = pipeline_layout_,
+    .renderPass = VK_NULL_HANDLE,
+  };
+
+  VkPipeline new_pipeline = VK_NULL_HANDLE;
+  if (vkCreateGraphicsPipelines(device_, nullptr, 1, &pipeline_info, nullptr, &new_pipeline) != VK_SUCCESS) {
+    log::error("Error creating the pipeline");
+    return nullptr;
+  }
+
+  return new_pipeline;
 }
 
 void Application::run() {

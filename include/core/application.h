@@ -68,9 +68,10 @@ private:
   VmaAllocation depth_image_allocation = VK_NULL_HANDLE;
   VkFormat depth_format_ = VK_FORMAT_D32_SFLOAT;
 
-  VkShaderModule vert_shader = VK_NULL_HANDLE;
-  VkShaderModule frag_shader = VK_NULL_HANDLE;
+  VkShaderModule vert_shader_ = VK_NULL_HANDLE;
+  VkShaderModule frag_shader_ = VK_NULL_HANDLE;
 
   VkPipeline pipeline_ = VK_NULL_HANDLE;
+  VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 };
 } // namespace strafe
