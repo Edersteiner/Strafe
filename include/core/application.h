@@ -1,9 +1,11 @@
 #pragma once
 
 #include "vulkan/vulkan_core.h"
-#include <SDL3/SDL.h>
 #include <string>
 #include <vector>
+#include <array>
+
+#include <SDL3/SDL.h>
 #include <volk.h>
 
 // Include after volk. The implementation is compiled in src/core/vma.cpp.
@@ -13,6 +15,13 @@
 #include <shaderc/shaderc.hpp>
 
 namespace strafe {
+
+struct FrameResources {
+  VkCommandPool command_pool = VK_NULL_HANDLE;
+  VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+  VkSemaphore image_acquired_semaphore = VK_NULL_HANDLE;
+};
+
 class Application {
 public:
   bool initialize();
@@ -21,6 +30,7 @@ public:
 
 private:
   const static uint32_t kVulkanVersion = VK_API_VERSION_1_4;
+  const static uint32_t kMaxFramesInFlight = 2;
 
   bool initializeVulkan();
   bool createVulkanInstance();
@@ -34,6 +44,8 @@ private:
   bool createShaders();
   VkShaderModule createShaderModule(const std::string &file_name, shaderc_shader_kind kind) const;
   VkPipeline createGraphicsPipeline();
+  bool createSyncResources();
+  bool createCommandBuffers();
 
   void render();
 
@@ -73,5 +85,8 @@ private:
 
   VkPipeline pipeline_ = VK_NULL_HANDLE;
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
+
+  VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
+  std::array<FrameResources, kMaxFramesInFlight> frame_resources_;
 };
 } // namespace strafe

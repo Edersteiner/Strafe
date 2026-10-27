@@ -2,16 +2,11 @@
 
 #include <SDL3/SDL_vulkan.h>
 
-#include <charconv>
 #include <cstdint>
 #include <vector>
 
 #include "core/log.h"
 #include "core/utils.h"
-#include "shaderc/shaderc.h"
-
-#include "shaderc/env.h"
-#include "shaderc/shaderc.hpp"
 #include "vulkan/vulkan_core.h"
 
 // Todo: actually abstract the rendering and not write everything in one file.
@@ -107,7 +102,14 @@ bool Application::initializeVulkan() {
     log::error("Unable to initialize the graphics pipeline");
     return false;
   }
-
+  if (!createSyncResources()) {
+    log::error("Couldn't create the sync related resources");
+    return false;
+  }
+  if (!createCommandBuffers()) {
+    log::error("Couldn't create command buffer objects");
+    return false;
+  }
   return true;
 }
 
@@ -643,6 +645,58 @@ VkPipeline Application::createGraphicsPipeline() {
   }
 
   return new_pipeline;
+}
+
+bool Application::createSyncResources() {
+  VkSemaphoreTypeCreateInfo semaphore_type_info {
+    .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+    .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
+    .initialValue = kMaxFramesInFlight
+  };
+  VkSemaphoreCreateInfo semaphore_info {
+    .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    .pNext = &semaphore_type_info
+  };
+  if (vkCreateSemaphore(device_, &semaphore_info, nullptr, &timeline_semaphore) != VK_SUCCESS) {
+    log::error("Failed to create timeline semaphore");
+    return false;
+  }
+
+  for (FrameResources &res : frame_resources_) {
+    VkSemaphoreCreateInfo semaphore_info{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+    if (vkCreateSemaphore(device_, &semaphore_info, nullptr, &res.image_acquired_semaphore) != VK_SUCCESS) {
+      log::error("Error creating the per-frame image-acquire semaphore");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool Application::createCommandBuffers() {
+  for (FrameResources &res : frame_resources_) {
+    VkCommandPoolCreateInfo pool_info {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .queueFamilyIndex = gfx_queue_fam_idx_
+    };
+    if (vkCreateCommandPool(device_, &pool_info, nullptr, &res.command_pool) != VK_SUCCESS) {
+      log::error("Unable to create command buffer pool");
+      return false;
+    }
+
+    VkCommandBufferAllocateInfo cmd_alloc_info {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = res.command_pool,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+    };
+
+    if (vkAllocateCommandBuffers(device_, &cmd_alloc_info, &res.command_buffer) != VK_SUCCESS) {
+      log::error("Unable to allocate command buffer");
+      return false;
+    }
+  }
+  return true;
 }
 
 void Application::run() {
