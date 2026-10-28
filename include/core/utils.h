@@ -4,5 +4,6 @@
 namespace strafe::utils {
 
 std::string readTextFile(const std::string &file_path);
+std::string basePath();
 
 }

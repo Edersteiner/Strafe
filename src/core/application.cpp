@@ -92,6 +92,9 @@ bool Application::initialize() {
       log::error("Failed to initialize Vulkan");
       return false;
     }
+  } else {
+    log::error("Failed to initialise SDL Subsystems: {}", SDL_GetError());
+    return false;
   }
 
   return true;
@@ -254,6 +257,7 @@ VkPhysicalDevice Application::findPhysicalDevice() {
     }
   } else {
     log::error("No physical devices found. Returning nullptr");
+    return nullptr;
   }
 
   // Ensure that picked device supports swapchain_format_
@@ -572,7 +576,7 @@ bool Application::createShaders() {
 
 VkShaderModule Application::createShaderModule(const std::string &file_name, shaderc_shader_kind kind) const {
   // Read shader file from disk
-  const std::string shaderPath = "shaders/" + file_name;
+  const std::string shaderPath = utils::basePath() + "shaders/" + file_name;
   const std::string src = utils::readTextFile(shaderPath);
   if (src.empty()) {
     log::error("Specified shader file doesn't exist: {}", shaderPath);
@@ -1037,7 +1041,7 @@ void Application::render() {
 }
 
 void Application::shutdown() {
-  vkDeviceWaitIdle(device_);
+  if (device_) vkDeviceWaitIdle(device_);
 
   if (timeline_semaphore) {
     vkDestroySemaphore(device_, timeline_semaphore, nullptr);

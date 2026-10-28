@@ -3,6 +3,8 @@
 #include <fstream>
 #include <sstream>
 
+#include <SDL3/SDL.h>
+
 namespace strafe::utils {
   std::string readTextFile(const std::string &file_path) {
     std::ifstream infile(file_path);
@@ -14,5 +16,9 @@ namespace strafe::utils {
       return output;
     }
     return std::string();
+  }
+
+  std::string basePath() {
+    return SDL_GetBasePath();
   }
 }
