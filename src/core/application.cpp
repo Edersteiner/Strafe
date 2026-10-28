@@ -13,68 +13,10 @@
 
 // Todo: actually abstract the rendering and not write everything in one file.
 // Coming soon I promise.
+//
+// Update: In progress :^)
 
 namespace strafe {
-
-VKAPI_ATTR VkBool32 VKAPI_CALL
-debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
-              VkDebugUtilsMessageTypeFlagsEXT message_typ,
-              const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data,
-              void *p_user_data) {
-  const char *type = "general";
-  if (message_typ & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
-    type = "validation";
-  } else if (message_typ & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {
-    type = "performance";
-  }
-
-  const char *message = p_callback_data->pMessage;
-  switch (message_severity) {
-  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-    log::trace("[vulkan:{}] {}", type, message);
-    break;
-  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-    log::info("[vulkan:{}] {}", type, message);
-    break;
-  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-    log::warn("[vulkan:{}] {}", type, message);
-    break;
-  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-  default:
-    log::error("[vulkan:{}] {}", type, message);
-    break;
-  }
-
-  return VK_FALSE;
-}
-
-namespace {
-bool hasInstanceLayer(const char* name) {
-  uint32_t count = 0;
-  vkEnumerateInstanceLayerProperties(&count, nullptr);
-  std::vector<VkLayerProperties> layers(count);
-  vkEnumerateInstanceLayerProperties(&count, layers.data());
-
-  for (VkLayerProperties &layer : layers) {
-    if (strcmp(layer.layerName, name) == 0) { return true; }
-  }
-
-  return false;
-}
-
-bool hasInstanceExtension(const char* name) {
-  uint32_t count = 0;
-  vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
-  std::vector<VkExtensionProperties> extensions(count);
-  vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
-
-  for (VkExtensionProperties &extension : extensions) {
-    if (strcmp(extension.extensionName, name) == 0) { return true; }
-  }
-
-  return false;
-}
-}
 
 bool Application::initialize() {
   if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
