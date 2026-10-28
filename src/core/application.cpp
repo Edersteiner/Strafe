@@ -4,10 +4,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "core/log.h"
 #include "core/utils.h"
+#include "core/flags.h"
 
 // Todo: actually abstract the rendering and not write everything in one file.
 // Coming soon I promise.
@@ -44,6 +46,34 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
   }
 
   return VK_FALSE;
+}
+
+namespace {
+bool hasInstanceLayer(const char* name) {
+  uint32_t count = 0;
+  vkEnumerateInstanceLayerProperties(&count, nullptr);
+  std::vector<VkLayerProperties> layers(count);
+  vkEnumerateInstanceLayerProperties(&count, layers.data());
+
+  for (VkLayerProperties &layer : layers) {
+    if (strcmp(layer.layerName, name) == 0) { return true; }
+  }
+
+  return false;
+}
+
+bool hasInstanceExtension(const char* name) {
+  uint32_t count = 0;
+  vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+  std::vector<VkExtensionProperties> extensions(count);
+  vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+
+  for (VkExtensionProperties &extension : extensions) {
+    if (strcmp(extension.extensionName, name) == 0) { return true; }
+  }
+
+  return false;
+}
 }
 
 bool Application::initialize() {
@@ -131,15 +161,39 @@ bool Application::createVulkanInstance() {
   uint32_t inst_ext_count = 0;
   const char *const *extensions =
       SDL_Vulkan_GetInstanceExtensions(&inst_ext_count);
-  std::vector<const char *> requested_extensions{
-      VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+
+  bool use_validation_layer = flags::kEnableValidation && hasInstanceLayer("VK_LAYER_KHRONOS_validation");
+  bool use_debug_utils = flags::kEnableValidation && hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+  std::vector<const char *> requested_extensions{};
+
+  if (use_debug_utils) {
+    requested_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
+
   for (size_t i = 0; i < inst_ext_count; ++i) {
     requested_extensions.push_back(extensions[i]);
   }
 
-  std::vector<const char *> requested_layers{"VK_LAYER_KHRONOS_validation"};
+  std::vector<const char *> requested_layers{};
 
-  VkDebugUtilsMessengerCreateInfoEXT debug_info{
+  if (use_validation_layer) {
+    requested_layers.push_back("VK_LAYER_KHRONOS_validation");
+  }
+
+  VkInstanceCreateInfo inst_create_info{
+    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    .pApplicationInfo = &app_info,
+    .enabledLayerCount = static_cast<uint32_t>(requested_layers.size()),
+    .ppEnabledLayerNames = requested_layers.data(),
+    .enabledExtensionCount =
+      static_cast<uint32_t>(requested_extensions.size()),
+    .ppEnabledExtensionNames = requested_extensions.data(),
+  };
+
+  VkDebugUtilsMessengerCreateInfoEXT debug_info{};
+  if (use_debug_utils) {
+    debug_info = {
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
       .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
                          VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
@@ -147,17 +201,8 @@ bool Application::createVulkanInstance() {
       .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                      VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
       .pfnUserCallback = debugCallback};
-
-  VkInstanceCreateInfo inst_create_info{
-      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-      .pNext = &debug_info,
-      .pApplicationInfo = &app_info,
-      .enabledLayerCount = static_cast<uint32_t>(requested_layers.size()),
-      .ppEnabledLayerNames = requested_layers.data(),
-      .enabledExtensionCount =
-          static_cast<uint32_t>(requested_extensions.size()),
-      .ppEnabledExtensionNames = requested_extensions.data(),
-  };
+    inst_create_info.pNext = &debug_info;
+  }
 
   if (vkCreateInstance(&inst_create_info, nullptr, &vulkan_instance_) !=
       VK_SUCCESS) {
@@ -165,6 +210,13 @@ bool Application::createVulkanInstance() {
   }
 
   volkLoadInstance(vulkan_instance_);
+
+  if (use_debug_utils) {
+    if (vkCreateDebugUtilsMessengerEXT(vulkan_instance_, &debug_info, nullptr, &debug_messenger_) != VK_SUCCESS) {
+      log::error("Failed to create debug messenger");
+      return false;
+    }
+  }
 
   return true;
 }
@@ -736,8 +788,6 @@ bool Application::createCommandBuffers() {
 }
 
 void Application::run() {
-  log::info("hello!");
-  log::error("evil hello!");
   running_ = true;
   while (running_) {
     SDL_Event event{0};
@@ -832,7 +882,7 @@ void Application::render() {
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
       .srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
         VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-      .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+      .srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
       .dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
         VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
       .dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
@@ -1019,6 +1069,9 @@ void Application::shutdown() {
   }
   if (device_) {
     vkDestroyDevice(device_, nullptr);
+  }
+  if (debug_messenger_) {
+    vkDestroyDebugUtilsMessengerEXT(vulkan_instance_, debug_messenger_, nullptr);
   }
   if (vulkan_instance_) {
     vkDestroyInstance(vulkan_instance_, nullptr);

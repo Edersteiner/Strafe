@@ -38,6 +38,10 @@ target("Strafe")
     -- Vulkan clip space uses a [0, 1] depth range.
     add_defines("GLM_FORCE_DEPTH_ZERO_TO_ONE")
 
+    if is_mode("debug") then
+      add_defines("STRAFE_DEBUG")
+    end
+
     after_build(function (target)
       import("core.project.task")
       task.run("stage_runtime_files", {}, target:targetdir())

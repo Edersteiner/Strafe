@@ -92,5 +92,7 @@ private:
 
   VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
   std::array<FrameResources, kMaxFramesInFlight> frame_resources_;
+
+  VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
 };
 } // namespace strafe
