@@ -277,16 +277,16 @@ bool Application::createDevice(VkPhysicalDevice physical_device) {
       .pNext = nullptr};
   VkPhysicalDeviceVulkan13Features features_13{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-      .pNext = &supported_features_14,
+      .pNext = &features_14,
       .synchronization2 = VK_TRUE,
       .dynamicRendering = VK_TRUE};
   VkPhysicalDeviceVulkan12Features features_12{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-      .pNext = &supported_features_13,
+      .pNext = &features_13,
       .timelineSemaphore = VK_TRUE};
   VkPhysicalDeviceFeatures2 features{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-      .pNext = &supported_features_12};
+      .pNext = &features_12};
 
   // request queues
   std::vector<float> queue_priorities{1.0f};
