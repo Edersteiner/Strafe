@@ -830,11 +830,13 @@ void Application::render() {
     },
     {
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
-      .srcAccessMask = 0,
+      .srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+      .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
       .dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
         VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-      .dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+      .dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
       .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
       .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
       .image = depth_image_,
@@ -891,7 +893,9 @@ void Application::render() {
     {
       .x = 0, .y = 0,
       .width = static_cast<float>(swapchain_width_),
-      .height = static_cast<float>(swapchain_height_)
+      .height = static_cast<float>(swapchain_height_),
+      .minDepth = 0,
+      .maxDepth = 1,
     };
     vkCmdSetViewport(res.command_buffer, 0, 1, &viewport);
 
