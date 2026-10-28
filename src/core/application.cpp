@@ -732,8 +732,8 @@ void Application::render() {
     require_swapchain_recreate = false;
   }
 
-  const uint32_t frame_res_index = frame_index_++ % kMaxFramesInFlight;
-  const uint64_t signal_value = next_signal_value++;
+  const uint32_t frame_res_index = frame_index_ % kMaxFramesInFlight;
+  const uint64_t signal_value = next_signal_value;
   const uint64_t wait_value = signal_value - kMaxFramesInFlight;
 
   VkSemaphoreWaitInfo wait_info {
@@ -759,6 +759,9 @@ void Application::render() {
   else if (acquire_result == VK_SUBOPTIMAL_KHR) {
     require_swapchain_recreate = true;
   }
+
+  ++frame_index_;
+  ++next_signal_value;
 
   VkCommandBufferBeginInfo cmd_begin_info {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
