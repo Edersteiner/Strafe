@@ -265,16 +265,20 @@ bool Application::createDevice(VkPhysicalDevice physical_device) {
       .pNext = &supported_features_12};
   vkGetPhysicalDeviceFeatures2(physical_device_, &supported_features);
 
-  if (!supported_features_13.dynamicRendering ||
+  if (!supported_features_14.maintenance5 ||
+      !supported_features_13.dynamicRendering ||
       !supported_features_13.synchronization2 ||
-      !supported_features_12.timelineSemaphore) {
+      !supported_features_12.timelineSemaphore ||
+      !supported_features_12.bufferDeviceAddress ||
+      !supported_features_12.scalarBlockLayout) {
     log::error("Physical device doesn't meet the feature requirements");
     return false;
   }
 
   VkPhysicalDeviceVulkan14Features features_14{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-      .pNext = nullptr};
+      .pNext = nullptr,
+      .maintenance5 = VK_TRUE};
   VkPhysicalDeviceVulkan13Features features_13{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
       .pNext = &features_14,
@@ -283,7 +287,9 @@ bool Application::createDevice(VkPhysicalDevice physical_device) {
   VkPhysicalDeviceVulkan12Features features_12{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .pNext = &features_13,
-      .timelineSemaphore = VK_TRUE};
+      .scalarBlockLayout = VK_TRUE,
+      .timelineSemaphore = VK_TRUE,
+      .bufferDeviceAddress = VK_TRUE};
   VkPhysicalDeviceFeatures2 features{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
       .pNext = &features_12};
