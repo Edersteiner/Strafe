@@ -38,13 +38,15 @@ private:
   bool findGraphicsQueue();
   bool createDevice(VkPhysicalDevice physical_device);
   bool initializeVMA();
-  bool createSwapchain(int width, int height);
+  bool createSwapchain();
   void destroySwapchain();
   bool createShaders();
   VkShaderModule createShaderModule(const std::string &file_name, shaderc_shader_kind kind) const;
   VkPipeline createGraphicsPipeline();
   bool createSyncResources();
   bool createCommandBuffers();
+
+  VkExtent2D chooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &caps) const;
 
   void render();
 

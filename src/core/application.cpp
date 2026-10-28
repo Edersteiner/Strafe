@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL_vulkan.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -55,6 +56,8 @@ bool Application::initialize() {
       return false;
     }
 
+    SDL_GetWindowSizeInPixels(window_, &width_, &height_);
+
     if (!initializeVulkan()) {
       log::error("Failed to initialize Vulkan");
       return false;
@@ -89,7 +92,7 @@ bool Application::initializeVulkan() {
     log::error("Failed to initialize VMA");
     return false;
   }
-  if (!createSwapchain(width_, height_)) {
+  if (!createSwapchain()) {
     log::error("Failed to create swapchain");
     return false;
   }
@@ -347,15 +350,43 @@ bool Application::initializeVMA() {
   return true;
 }
 
-bool Application::createSwapchain(int width, int height) {
-  swapchain_width_ = width;
-  swapchain_height_ = height;
+VkExtent2D Application::chooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &caps) const {
+  // If the current extent has a decided size already, use it.
+  if (caps.currentExtent.width != UINT32_MAX) {
+    return caps.currentExtent;
+  }
 
+  // If it doesn't, set extent based on our window.
+  VkExtent2D extent {
+    .width = static_cast<uint32_t>(width_),
+    .height = static_cast<uint32_t>(height_)
+  };
+
+  // Clamp extent to what the driver allows
+  extent.width = std::clamp(extent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
+  extent.height = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
+
+  return extent;
+}
+
+bool Application::createSwapchain() {
   VkSurfaceCapabilitiesKHR surface_caps{};
   if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps) != VK_SUCCESS) {
     log::info("Couldn't get the surface capabilities from physical device");
     return false;
   }
+
+  VkExtent2D extent = chooseSwapchainExtent(surface_caps);
+
+  // If extent width or height is 0, the window is invisible or minimized.
+  // Do not return a swapchain in that case
+  if (extent.width == 0 || extent.height == 0) {
+    swapchain_ = VK_NULL_HANDLE;
+    return true;
+  }
+
+  swapchain_width_ = extent.width;
+  swapchain_height_ = extent.height;
 
   uint32_t requested_image_count = std::max(2u, surface_caps.minImageCount);
   if (surface_caps.maxImageCount > 0) {
@@ -714,10 +745,9 @@ void Application::run() {
       if (event.type == SDL_EVENT_QUIT) {
         running_ = false;
         break;
-      } else if (event.type == SDL_EVENT_WINDOW_RESIZED) {
-        width_ = event.window.data1;
-        height_ = event.window.data2;
-        break;
+      } else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+        SDL_GetWindowSizeInPixels(window_, &width_, &height_);
+        require_swapchain_recreate = true;
       }
     }
     render();
@@ -728,8 +758,17 @@ void Application::render() {
   if (require_swapchain_recreate) {
     vkDeviceWaitIdle(device_);
     destroySwapchain();
-    createSwapchain(width_, height_);
-    require_swapchain_recreate = false;
+    if (!createSwapchain()) {
+      log::error("Cannot recreate swapchain!");
+      running_ = false;
+      return;
+    }
+    require_swapchain_recreate = (swapchain_ == VK_NULL_HANDLE);
+  }
+
+  // No swapchain (window minimized, etc.) skip rendering.
+  if (swapchain_ == VK_NULL_HANDLE) {
+    return;
   }
 
   const uint32_t frame_res_index = frame_index_ % kMaxFramesInFlight;
