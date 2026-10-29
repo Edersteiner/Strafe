@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gfx/device.h"
+#include "gfx/swapchain.h"
 
 #include <string>
 #include <vector>
@@ -40,8 +41,8 @@ private:
   bool findGraphicsQueue();
   bool createDevice(VkPhysicalDevice physical_device);
   bool initializeVMA();
-  bool createSwapchain();
-  void destroySwapchain();
+  bool createDepthBuffer();
+  void destroyDepthBuffer();
   bool createShaders();
   VkShaderModule createShaderModule(const std::string &file_name, shaderc_shader_kind kind) const;
   VkPipeline createGraphicsPipeline();
@@ -61,19 +62,13 @@ private:
   uint64_t next_signal_value = kMaxFramesInFlight + 1;
 
   gfx::Device device_;
+  gfx::Swapchain swapchain_;
 
-  VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
-  std::vector<VkImage> swapchain_images_;
-  std::vector<VkImageView> swapchain_image_views_;
-  std::vector<VkSemaphore> render_complete_semaphores_;
-  VkFormat swapchain_format_ = VK_FORMAT_B8G8R8A8_SRGB;
   bool require_swapchain_recreate = false;
-  int swapchain_width_ = 0;
-  int swapchain_height_ = 0;
 
   VkImage depth_image_ = VK_NULL_HANDLE;
-  VkImageView depth_image_view = VK_NULL_HANDLE;
-  VmaAllocation depth_image_allocation = VK_NULL_HANDLE;
+  VkImageView depth_image_view_ = VK_NULL_HANDLE;
+  VmaAllocation depth_image_allocation_ = VK_NULL_HANDLE;
   VkFormat depth_format_ = VK_FORMAT_D32_SFLOAT;
 
   VkShaderModule vert_shader_ = VK_NULL_HANDLE;

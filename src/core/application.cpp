@@ -43,10 +43,19 @@ bool Application::initialize() {
 }
 
 bool Application::initializeVulkan() {
-  device_.initialize(window_, swapchain_format_);
-
-  if (!createSwapchain()) {
+  if (!device_.initialize(window_, swapchain_.format())) {
+    log::error("Failed to initialize the GPU device");
+    return false;
+  }
+  if (!swapchain_.initialize(device_, VkExtent2D{static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)})) {
     log::error("Failed to create swapchain");
+    return false;
+  }
+
+  // No swapchain means the window starts minimized. render() creates the
+  // depth buffer once the swapchain exists.
+  if (swapchain_.handle() && !createDepthBuffer()) {
+    log::error("Failed to create depth buffer");
     return false;
   }
   if (!createShaders()) {
@@ -68,109 +77,13 @@ bool Application::initializeVulkan() {
   return true;
 }
 
-VkExtent2D Application::chooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &caps) const {
-  // If the current extent has a decided size already, use it.
-  if (caps.currentExtent.width != UINT32_MAX) {
-    return caps.currentExtent;
-  }
-
-  // If it doesn't, set extent based on our window.
-  VkExtent2D extent {
-    .width = static_cast<uint32_t>(width_),
-    .height = static_cast<uint32_t>(height_)
-  };
-
-  // Clamp extent to what the driver allows
-  extent.width = std::clamp(extent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
-  extent.height = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
-
-  return extent;
-}
-
-bool Application::createSwapchain() {
-  VkSurfaceCapabilitiesKHR surface_caps{};
-  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_.physicalDevice(), device_.surface(), &surface_caps) != VK_SUCCESS) {
-    log::info("Couldn't get the surface capabilities from physical device");
-    return false;
-  }
-
-  VkExtent2D extent = chooseSwapchainExtent(surface_caps);
-
-  // If extent width or height is 0, the window is invisible or minimized.
-  // Do not return a swapchain in that case
-  if (extent.width == 0 || extent.height == 0) {
-    swapchain_ = VK_NULL_HANDLE;
-    return true;
-  }
-
-  swapchain_width_ = extent.width;
-  swapchain_height_ = extent.height;
-
-  uint32_t requested_image_count = std::max(2u, surface_caps.minImageCount);
-  if (surface_caps.maxImageCount > 0) {
-    requested_image_count = std::min(requested_image_count, surface_caps.maxImageCount);
-  }
-
-  VkSwapchainCreateInfoKHR swapchain_create_info {
-    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-    .surface = device_.surface(),
-    .minImageCount = requested_image_count,
-    .imageFormat = swapchain_format_,
-    .imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR,
-    .imageExtent{.width = static_cast<uint32_t>(swapchain_width_), .height = static_cast<uint32_t>(swapchain_height_)},
-    .imageArrayLayers = 1,
-    .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-    .preTransform = surface_caps.currentTransform,
-    .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-    .presentMode = VK_PRESENT_MODE_FIFO_KHR};
-
-  if (vkCreateSwapchainKHR(device_.logicalDevice(), &swapchain_create_info, nullptr, &swapchain_) != VK_SUCCESS) {
-    return false;
-  }
-
-  // Get swapchain images
-  uint32_t image_count = 0;
-  vkGetSwapchainImagesKHR(device_.logicalDevice(), swapchain_, &image_count, nullptr);
-  swapchain_images_.resize(image_count);
-  vkGetSwapchainImagesKHR(device_.logicalDevice(), swapchain_, &image_count, swapchain_images_.data());
-  swapchain_image_views_.resize(image_count);
-
-  for (size_t i = 0; i < swapchain_images_.size(); ++i) {
-    VkImageViewCreateInfo img_view_info {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = swapchain_images_[i],
-      .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = swapchain_format_,
-      .subresourceRange {
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1
-      }
-    };
-
-    if (vkCreateImageView(device_.logicalDevice(), &img_view_info, nullptr, &swapchain_image_views_[i]) != VK_SUCCESS) {
-      log::error("Error creating swapchain image view");
-      return false;
-    }
-  }
-
-  // Semaphores used to signal render completion
-  render_complete_semaphores_.resize(swapchain_images_.size());
-  for (VkSemaphore &semaphore : render_complete_semaphores_) {
-    VkSemaphoreCreateInfo semaphore_info{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-    if (vkCreateSemaphore(device_.logicalDevice(), &semaphore_info, nullptr, &semaphore) != VK_SUCCESS) {
-      log::error("Error creating the render-complete semaphore");
-      return false;
-    }
-  }
-
+bool Application::createDepthBuffer() {
+  const VkExtent2D extent = swapchain_.extent();
   VkImageCreateInfo depth_create_info {
     .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
     .imageType = VK_IMAGE_TYPE_2D,
     .format = depth_format_,
-    .extent{.width = static_cast<uint32_t>(swapchain_width_), .height = static_cast<uint32_t>(swapchain_height_), .depth = 1 },
+    .extent{.width = extent.width, .height = extent.height, .depth = 1 },
     .mipLevels = 1,
     .arrayLayers = 1,
     .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -183,7 +96,7 @@ bool Application::createSwapchain() {
     .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
     .usage = VMA_MEMORY_USAGE_AUTO
   };
-  if (vmaCreateImage(device_.allocator(), &depth_create_info, &alloc_info, &depth_image_, &depth_image_allocation, nullptr) != VK_SUCCESS) {
+  if (vmaCreateImage(device_.allocator(), &depth_create_info, &alloc_info, &depth_image_, &depth_image_allocation_, nullptr) != VK_SUCCESS) {
     log::error("Error allocating depth image");
     return false;
   }
@@ -195,7 +108,7 @@ bool Application::createSwapchain() {
     .format = depth_format_,
     .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .levelCount = 1, .layerCount = 1}
   };
-  if (vkCreateImageView(device_.logicalDevice(), &depth_img_view_info, nullptr, &depth_image_view) != VK_SUCCESS) {
+  if (vkCreateImageView(device_.logicalDevice(), &depth_img_view_info, nullptr, &depth_image_view_) != VK_SUCCESS) {
     log::error("Error creating depth image view");
     return false;
   }
@@ -203,26 +116,15 @@ bool Application::createSwapchain() {
   return true;
 }
 
-void Application::destroySwapchain() {
-  for (VkImageView swapchain_img_view : swapchain_image_views_) {
-    vkDestroyImageView(device_.logicalDevice(), swapchain_img_view, nullptr);
+void Application::destroyDepthBuffer() {
+  if (depth_image_view_) {
+    vkDestroyImageView(device_.logicalDevice(), depth_image_view_, nullptr);
+    depth_image_view_ = VK_NULL_HANDLE;
   }
-  swapchain_image_views_.clear();
-
-  for (VkSemaphore &semaphore : render_complete_semaphores_) {
-    vkDestroySemaphore(device_.logicalDevice(), semaphore, nullptr);
-  }
-  render_complete_semaphores_.clear();
-
-  if (swapchain_) {
-    vkDestroySwapchainKHR(device_.logicalDevice(), swapchain_, nullptr);
-    swapchain_ = nullptr;
-  }
-
-  if (depth_image_view) {
-    vkDestroyImageView(device_.logicalDevice(), depth_image_view, nullptr);
-    vmaDestroyImage(device_.allocator(), depth_image_, depth_image_allocation);
-    depth_image_view = nullptr;
+  if (depth_image_) {
+    vmaDestroyImage(device_.allocator(), depth_image_, depth_image_allocation_);
+    depth_image_ = VK_NULL_HANDLE;
+    depth_image_allocation_ = VK_NULL_HANDLE;
   }
 }
 
@@ -368,10 +270,12 @@ VkPipeline Application::createGraphicsPipeline() {
     .pDynamicStates = dynamic_state.data()
   };
 
+  const VkFormat color_format = swapchain_.format();
+
   VkPipelineRenderingCreateInfo render_info {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
     .colorAttachmentCount = 1,
-    .pColorAttachmentFormats = &swapchain_format_,
+    .pColorAttachmentFormats = &color_format,
     .depthAttachmentFormat = depth_format_
   };
 
@@ -472,18 +376,24 @@ void Application::run() {
 
 void Application::render() {
   if (require_swapchain_recreate) {
-    vkDeviceWaitIdle(device_.logicalDevice());
-    destroySwapchain();
-    if (!createSwapchain()) {
+    if (!swapchain_.recreate(VkExtent2D{static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)})) {
       log::error("Cannot recreate swapchain!");
       running_ = false;
       return;
     }
-    require_swapchain_recreate = (swapchain_ == VK_NULL_HANDLE);
+
+    destroyDepthBuffer();
+    if (swapchain_.handle() && !createDepthBuffer()) {
+      log::error("Cannot recreate depth buffer!");
+      running_ = false;
+      return;
+    }
+
+    require_swapchain_recreate = (swapchain_.handle() == VK_NULL_HANDLE);
   }
 
   // No swapchain (window minimized, etc.) skip rendering.
-  if (swapchain_ == VK_NULL_HANDLE) {
+  if (swapchain_.handle() == VK_NULL_HANDLE) {
     return;
   }
 
@@ -505,7 +415,7 @@ void Application::render() {
   VkSemaphore image_acquire_semaphore = frame_resources_[frame_res_index].image_acquired_semaphore;
 
   uint32_t image_index = 0;
-  VkResult acquire_result = vkAcquireNextImageKHR(device_.logicalDevice(), swapchain_, UINT64_MAX, image_acquire_semaphore, VK_NULL_HANDLE, &image_index);
+  VkResult acquire_result = vkAcquireNextImageKHR(device_.logicalDevice(), swapchain_.handle(), UINT64_MAX, image_acquire_semaphore, VK_NULL_HANDLE, &image_index);
 
   if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
     require_swapchain_recreate = true;
@@ -535,7 +445,7 @@ void Application::render() {
       .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
       .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
       .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      .image = swapchain_images_[image_index],
+      .image = swapchain_.image(image_index),
       .subresourceRange {
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
         .baseMipLevel = 0,
@@ -575,7 +485,7 @@ void Application::render() {
 
   VkRenderingAttachmentInfo color_attachment_info {
     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-    .imageView = swapchain_image_views_[image_index],
+    .imageView = swapchain_.imageView(image_index),
     .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, // Clear the image
     .storeOp = VK_ATTACHMENT_STORE_OP_STORE, // keep dAta for presentation
@@ -583,7 +493,7 @@ void Application::render() {
   };
   VkRenderingAttachmentInfo depth_attachment_info {
     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-    .imageView = depth_image_view,
+    .imageView = depth_image_view_,
     .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
     .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -594,7 +504,7 @@ void Application::render() {
     .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
     .renderArea {
       .offset{.x = 0, .y = 0},
-      .extent{.width = static_cast<uint32_t>(swapchain_width_), .height = static_cast<uint32_t>(swapchain_height_)}
+      .extent = swapchain_.extent()
       },
     .layerCount = 1,
     .colorAttachmentCount = 1,
@@ -608,8 +518,8 @@ void Application::render() {
     VkViewport viewport
     {
       .x = 0, .y = 0,
-      .width = static_cast<float>(swapchain_width_),
-      .height = static_cast<float>(swapchain_height_),
+      .width = static_cast<float>(swapchain_.extent().width),
+      .height = static_cast<float>(swapchain_.extent().height),
       .minDepth = 0,
       .maxDepth = 1,
     };
@@ -617,7 +527,7 @@ void Application::render() {
 
     VkRect2D scissor {
       .offset{.x = 0, .y = 0},
-      .extent{.width = static_cast<uint32_t>(swapchain_width_), .height = static_cast<uint32_t>(swapchain_height_)}
+      .extent = swapchain_.extent()
     };
     vkCmdSetScissor(res.command_buffer, 0, 1, &scissor);
 
@@ -635,7 +545,7 @@ void Application::render() {
     .dstAccessMask = 0,
     .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-    .image = swapchain_images_[image_index],
+    .image = swapchain_.image(image_index),
     .subresourceRange {
       .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
       .baseMipLevel = 0,
@@ -664,7 +574,7 @@ void Application::render() {
   std::vector<VkSemaphoreSubmitInfo> semaphore_signals {
     { // render work completion signal
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-      .semaphore = render_complete_semaphores_[image_index],
+      .semaphore = swapchain_.presentSemaphore(image_index),
       .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT
     },
     { // entire frame is completed (timeline)
@@ -689,12 +599,15 @@ void Application::render() {
   };
   vkQueueSubmit2(device_.graphicsQueue(), 1, &submit_info, VK_NULL_HANDLE);
 
+  const VkSemaphore present_semaphor = swapchain_.presentSemaphore(image_index);
+  const VkSwapchainKHR swapchain_handle = swapchain_.handle();
+
   VkPresentInfoKHR present_info {
     .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
     .waitSemaphoreCount = 1,
-    .pWaitSemaphores = &render_complete_semaphores_[image_index],
+    .pWaitSemaphores = &present_semaphor,
     .swapchainCount = 1,
-    .pSwapchains = &swapchain_,
+    .pSwapchains = &swapchain_handle,
     .pImageIndices = &image_index,
     .pResults = nullptr
   };
@@ -726,7 +639,8 @@ void Application::shutdown() {
     vkDestroyShaderModule(device_.logicalDevice(), frag_shader_, nullptr);
   }
 
-  destroySwapchain();
+  destroyDepthBuffer();
+  swapchain_.shutdown();
   device_.shutdown();
 
   if (window_) {
