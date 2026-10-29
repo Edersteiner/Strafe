@@ -18,11 +18,7 @@
 
 namespace strafe {
 
-struct FrameResources {
-  VkCommandPool command_pool = VK_NULL_HANDLE;
-  VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-  VkSemaphore image_acquired_semaphore = VK_NULL_HANDLE;
-};
+
 
 class Application {
 public:
@@ -70,8 +66,5 @@ private:
 
   VkPipeline pipeline_ = VK_NULL_HANDLE;
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
-
-  VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
-  std::array<FrameResources, kMaxFramesInFlight> frame_resources_;
-};
+  };
 } // namespace strafe
