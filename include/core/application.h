@@ -35,12 +35,6 @@ private:
   const static uint32_t kMaxFramesInFlight = 2;
 
   bool initializeVulkan();
-  bool createVulkanInstance();
-  bool createSurface();
-  VkPhysicalDevice findPhysicalDevice();
-  bool findGraphicsQueue();
-  bool createDevice(VkPhysicalDevice physical_device);
-  bool initializeVMA();
   bool createDepthBuffer();
   void destroyDepthBuffer();
   bool createShaders();
