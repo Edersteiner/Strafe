@@ -11,15 +11,12 @@ namespace strafe::gfx {
 class Device {
 public:
   Device() = default;
-
-  // Destructor safety net, will be changed when
-  // I get a deletion queue in place.
-  ~Device() { shutdown(); }
+  ~Device() = default;
 
   Device(const Device&) = delete;
   Device &operator=(const Device&) = delete;
 
-  bool initialize(SDL_Window* window);
+  bool initialize(SDL_Window* window, VkFormat requested_swapchain_format);
   void shutdown();
 
   VkDevice logicalDevice() const {return logical_device_; }
@@ -35,9 +32,9 @@ private:
   bool initializeVMA();
   bool createVulkanInstance();
 
-  bool createSurface();
+  bool createSurface(SDL_Window* window);
 
-  bool findPhysicalDevice();
+  bool findPhysicalDevice(VkFormat requested_swapchain_format);
   bool findGraphicsQueue();
 
   bool createLogicalDevice();

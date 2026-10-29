@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gfx/device.h"
+
 #include <string>
 #include <vector>
 #include <array>
@@ -58,17 +60,7 @@ private:
   uint32_t frame_index_ = 0;
   uint64_t next_signal_value = kMaxFramesInFlight + 1;
 
-  VkInstance vulkan_instance_ = VK_NULL_HANDLE;
-
-  VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-
-  VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
-  VkDevice device_ = VK_NULL_HANDLE;
-
-  uint32_t gfx_queue_fam_idx_ = UINT32_MAX;
-  VkQueue gfx_queue_ = VK_NULL_HANDLE;
-
-  VmaAllocator vma_allocator_ = VK_NULL_HANDLE;
+  gfx::Device device_;
 
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   std::vector<VkImage> swapchain_images_;
@@ -92,7 +84,5 @@ private:
 
   VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
   std::array<FrameResources, kMaxFramesInFlight> frame_resources_;
-
-  VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
 };
 } // namespace strafe

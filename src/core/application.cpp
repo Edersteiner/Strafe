@@ -43,30 +43,8 @@ bool Application::initialize() {
 }
 
 bool Application::initializeVulkan() {
-  if (!createVulkanInstance()) {
-    log::error("Couldn't create Vulkan instance");
-    return false;
-  }
-  if (!createSurface()) {
-    log::error("Couldn't create window surface");
-    return false;
-  }
-  if (physical_device_ = findPhysicalDevice(); !physical_device_) {
-    log::error("Failed to select physical device");
-    return false;
-  }
-  if (!findGraphicsQueue()) {
-    log::error("Failed to find a compatible graphics queue");
-    return false;
-  }
-  if (!createDevice(physical_device_)) {
-    log::error("Failed to create logical GPU device");
-    return false;
-  }
-  if (!initializeVMA()) {
-    log::error("Failed to initialize VMA");
-    return false;
-  }
+  device_.initialize(window_, swapchain_format_);
+
   if (!createSwapchain()) {
     log::error("Failed to create swapchain");
     return false;
@@ -85,264 +63,6 @@ bool Application::initializeVulkan() {
   }
   if (!createCommandBuffers()) {
     log::error("Couldn't create command buffer objects");
-    return false;
-  }
-  return true;
-}
-
-bool Application::createVulkanInstance() {
-  if (volkInitialize() != VK_SUCCESS) {
-    log::error("Error initializing Volk");
-    return false;
-  }
-
-  VkApplicationInfo app_info{
-      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-      .pApplicationName = "Strafe Engine Application",
-      .apiVersion = kVulkanVersion,
-  };
-
-  // Find required extensions for platform
-  uint32_t inst_ext_count = 0;
-  const char *const *extensions =
-      SDL_Vulkan_GetInstanceExtensions(&inst_ext_count);
-
-  bool use_validation_layer = flags::kEnableValidation && hasInstanceLayer("VK_LAYER_KHRONOS_validation");
-  bool use_debug_utils = flags::kEnableValidation && hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-
-  std::vector<const char *> requested_extensions{};
-
-  if (use_debug_utils) {
-    requested_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-  }
-
-  for (size_t i = 0; i < inst_ext_count; ++i) {
-    requested_extensions.push_back(extensions[i]);
-  }
-
-  std::vector<const char *> requested_layers{};
-
-  if (use_validation_layer) {
-    requested_layers.push_back("VK_LAYER_KHRONOS_validation");
-  }
-
-  VkInstanceCreateInfo inst_create_info{
-    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-    .pApplicationInfo = &app_info,
-    .enabledLayerCount = static_cast<uint32_t>(requested_layers.size()),
-    .ppEnabledLayerNames = requested_layers.data(),
-    .enabledExtensionCount =
-      static_cast<uint32_t>(requested_extensions.size()),
-    .ppEnabledExtensionNames = requested_extensions.data(),
-  };
-
-  VkDebugUtilsMessengerCreateInfoEXT debug_info{};
-  if (use_debug_utils) {
-    debug_info = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-      .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-      .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                     VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-      .pfnUserCallback = debugCallback};
-    inst_create_info.pNext = &debug_info;
-  }
-
-  if (vkCreateInstance(&inst_create_info, nullptr, &vulkan_instance_) !=
-      VK_SUCCESS) {
-    return false;
-  }
-
-  volkLoadInstance(vulkan_instance_);
-
-  if (use_debug_utils) {
-    if (vkCreateDebugUtilsMessengerEXT(vulkan_instance_, &debug_info, nullptr, &debug_messenger_) != VK_SUCCESS) {
-      log::error("Failed to create debug messenger");
-      return false;
-    }
-  }
-
-  return true;
-}
-
-bool Application::createSurface() {
-  if (!SDL_Vulkan_CreateSurface(window_, vulkan_instance_, nullptr,
-                                &surface_)) {
-    log::error("SDL_Vulkan_CreateSurface failed");
-    return false;
-  }
-  return true;
-}
-
-// Picks the first dedicated GPU if one exists
-// Otherwise falls back to integrated or first GPU found.
-// todo: score devices if multiple discrete options are found
-VkPhysicalDevice Application::findPhysicalDevice() {
-  uint32_t phys_device_count = 0;
-  vkEnumeratePhysicalDevices(vulkan_instance_, &phys_device_count, nullptr);
-  std::vector<VkPhysicalDevice> devices(phys_device_count);
-  vkEnumeratePhysicalDevices(vulkan_instance_, &phys_device_count,
-                             devices.data());
-
-  VkPhysicalDevice physical_device = nullptr;
-  if (phys_device_count) {
-    // Pick the first GPU as fallback
-    physical_device = devices[0];
-    for (auto &p_dev : devices) {
-      VkPhysicalDeviceProperties props{};
-      vkGetPhysicalDeviceProperties(p_dev, &props);
-      if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-        physical_device = p_dev;
-        break;
-      }
-    }
-  } else {
-    log::error("No physical devices found. Returning nullptr");
-    return nullptr;
-  }
-
-  // Ensure that picked device supports swapchain_format_
-  uint32_t fmt_count = 0;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count, nullptr);
-  std::vector<VkSurfaceFormatKHR> surface_formats(fmt_count);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count, surface_formats.data());
-
-  bool format_supported = false;
-  for (const VkSurfaceFormatKHR &surface_format : surface_formats) {
-    if (surface_format.format == swapchain_format_) {
-      format_supported = true;
-      break;
-    }
-  }
-  if (!format_supported) {
-    log::error("Requested swapchain format is not supported by the surface");
-    return nullptr;
-  }
-
-  return physical_device;
-}
-
-// Finds a graphics queue with presentation support.
-bool Application::findGraphicsQueue() {
-  uint32_t queue_fam_count = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties2(physical_device_, &queue_fam_count,
-                                            nullptr);
-  std::vector<VkQueueFamilyProperties2> queue_fam_props(
-      queue_fam_count, {.sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2});
-  vkGetPhysicalDeviceQueueFamilyProperties2(physical_device_, &queue_fam_count,
-                                            queue_fam_props.data());
-
-  for (size_t current_fam_idx = 0; current_fam_idx < queue_fam_props.size();
-       current_fam_idx++) {
-    // Ensure queue
-    VkBool32 has_present_support = VK_FALSE;
-    vkGetPhysicalDeviceSurfaceSupportKHR(physical_device_, current_fam_idx,
-                                         surface_, &has_present_support);
-
-    const auto &props = queue_fam_props[current_fam_idx];
-    if (props.queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT &&
-        has_present_support) {
-      gfx_queue_fam_idx_ = current_fam_idx;
-      return true;
-    }
-  }
-  return false;
-}
-
-bool Application::createDevice(VkPhysicalDevice physical_device) {
-  // Query supported features
-  VkPhysicalDeviceVulkan14Features supported_features_14{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-      .pNext = nullptr};
-  VkPhysicalDeviceVulkan13Features supported_features_13{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-      .pNext = &supported_features_14};
-  VkPhysicalDeviceVulkan12Features supported_features_12{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-      .pNext = &supported_features_13};
-  VkPhysicalDeviceFeatures2 supported_features{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-      .pNext = &supported_features_12};
-  vkGetPhysicalDeviceFeatures2(physical_device_, &supported_features);
-
-  if (!supported_features_14.maintenance5 ||
-      !supported_features_13.dynamicRendering ||
-      !supported_features_13.synchronization2 ||
-      !supported_features_12.timelineSemaphore ||
-      !supported_features_12.bufferDeviceAddress ||
-      !supported_features_12.scalarBlockLayout) {
-    log::error("Physical device doesn't meet the feature requirements");
-    return false;
-  }
-
-  VkPhysicalDeviceVulkan14Features features_14{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-      .pNext = nullptr,
-      .maintenance5 = VK_TRUE};
-  VkPhysicalDeviceVulkan13Features features_13{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-      .pNext = &features_14,
-      .synchronization2 = VK_TRUE,
-      .dynamicRendering = VK_TRUE};
-  VkPhysicalDeviceVulkan12Features features_12{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-      .pNext = &features_13,
-      .scalarBlockLayout = VK_TRUE,
-      .timelineSemaphore = VK_TRUE,
-      .bufferDeviceAddress = VK_TRUE};
-  VkPhysicalDeviceFeatures2 features{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-      .pNext = &features_12};
-
-  // request queues
-  std::vector<float> queue_priorities{1.0f};
-  VkDeviceQueueCreateInfo gfx_queue_info{
-      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-      .queueFamilyIndex = gfx_queue_fam_idx_,
-      .queueCount = 1,
-      .pQueuePriorities = queue_priorities.data()};
-
-  // device specific extensions
-  const std::vector<const char *> device_extensions{
-      VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-
-  VkDeviceCreateInfo dev_create_info{
-      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext = &features,
-      .queueCreateInfoCount = 1,
-      .pQueueCreateInfos = &gfx_queue_info,
-      .enabledExtensionCount = static_cast<uint32_t>(device_extensions.size()),
-      .ppEnabledExtensionNames = device_extensions.data(),
-      .pEnabledFeatures = nullptr};
-
-  if (vkCreateDevice(physical_device, &dev_create_info, nullptr, &device_) !=
-      VK_SUCCESS) {
-    return false;
-  }
-
-  vkGetDeviceQueue(device_, gfx_queue_fam_idx_, 0, &gfx_queue_);
-  if (!gfx_queue_) {
-    log::info("Failed to get graphics queue from device");
-    return false;
-  }
-  return true;
-}
-
-bool Application::initializeVMA() {
-  VmaVulkanFunctions vma_func_info{};
-  VmaAllocatorCreateInfo vma_alloc_info{
-    .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-    .physicalDevice = physical_device_,
-    .device = device_,
-    .pVulkanFunctions = &vma_func_info,
-    .instance = vulkan_instance_,
-    .vulkanApiVersion = kVulkanVersion
-  };
-
-  vmaImportVulkanFunctionsFromVolk(&vma_alloc_info, &vma_func_info);
-
-  if (vmaCreateAllocator(&vma_alloc_info, &vma_allocator_) != VK_SUCCESS) {
     return false;
   }
   return true;
@@ -369,7 +89,7 @@ VkExtent2D Application::chooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &ca
 
 bool Application::createSwapchain() {
   VkSurfaceCapabilitiesKHR surface_caps{};
-  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &surface_caps) != VK_SUCCESS) {
+  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_.physicalDevice(), device_.surface(), &surface_caps) != VK_SUCCESS) {
     log::info("Couldn't get the surface capabilities from physical device");
     return false;
   }
@@ -393,7 +113,7 @@ bool Application::createSwapchain() {
 
   VkSwapchainCreateInfoKHR swapchain_create_info {
     .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-    .surface = surface_,
+    .surface = device_.surface(),
     .minImageCount = requested_image_count,
     .imageFormat = swapchain_format_,
     .imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR,
@@ -404,15 +124,15 @@ bool Application::createSwapchain() {
     .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
     .presentMode = VK_PRESENT_MODE_FIFO_KHR};
 
-  if (vkCreateSwapchainKHR(device_, &swapchain_create_info, nullptr, &swapchain_) != VK_SUCCESS) {
+  if (vkCreateSwapchainKHR(device_.logicalDevice(), &swapchain_create_info, nullptr, &swapchain_) != VK_SUCCESS) {
     return false;
   }
 
   // Get swapchain images
   uint32_t image_count = 0;
-  vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, nullptr);
+  vkGetSwapchainImagesKHR(device_.logicalDevice(), swapchain_, &image_count, nullptr);
   swapchain_images_.resize(image_count);
-  vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, swapchain_images_.data());
+  vkGetSwapchainImagesKHR(device_.logicalDevice(), swapchain_, &image_count, swapchain_images_.data());
   swapchain_image_views_.resize(image_count);
 
   for (size_t i = 0; i < swapchain_images_.size(); ++i) {
@@ -430,7 +150,7 @@ bool Application::createSwapchain() {
       }
     };
 
-    if (vkCreateImageView(device_, &img_view_info, nullptr, &swapchain_image_views_[i]) != VK_SUCCESS) {
+    if (vkCreateImageView(device_.logicalDevice(), &img_view_info, nullptr, &swapchain_image_views_[i]) != VK_SUCCESS) {
       log::error("Error creating swapchain image view");
       return false;
     }
@@ -440,7 +160,7 @@ bool Application::createSwapchain() {
   render_complete_semaphores_.resize(swapchain_images_.size());
   for (VkSemaphore &semaphore : render_complete_semaphores_) {
     VkSemaphoreCreateInfo semaphore_info{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-    if (vkCreateSemaphore(device_, &semaphore_info, nullptr, &semaphore) != VK_SUCCESS) {
+    if (vkCreateSemaphore(device_.logicalDevice(), &semaphore_info, nullptr, &semaphore) != VK_SUCCESS) {
       log::error("Error creating the render-complete semaphore");
       return false;
     }
@@ -463,7 +183,7 @@ bool Application::createSwapchain() {
     .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
     .usage = VMA_MEMORY_USAGE_AUTO
   };
-  if (vmaCreateImage(vma_allocator_, &depth_create_info, &alloc_info, &depth_image_, &depth_image_allocation, nullptr) != VK_SUCCESS) {
+  if (vmaCreateImage(device_.allocator(), &depth_create_info, &alloc_info, &depth_image_, &depth_image_allocation, nullptr) != VK_SUCCESS) {
     log::error("Error allocating depth image");
     return false;
   }
@@ -475,7 +195,7 @@ bool Application::createSwapchain() {
     .format = depth_format_,
     .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .levelCount = 1, .layerCount = 1}
   };
-  if (vkCreateImageView(device_, &depth_img_view_info, nullptr, &depth_image_view) != VK_SUCCESS) {
+  if (vkCreateImageView(device_.logicalDevice(), &depth_img_view_info, nullptr, &depth_image_view) != VK_SUCCESS) {
     log::error("Error creating depth image view");
     return false;
   }
@@ -485,23 +205,23 @@ bool Application::createSwapchain() {
 
 void Application::destroySwapchain() {
   for (VkImageView swapchain_img_view : swapchain_image_views_) {
-    vkDestroyImageView(device_, swapchain_img_view, nullptr);
+    vkDestroyImageView(device_.logicalDevice(), swapchain_img_view, nullptr);
   }
   swapchain_image_views_.clear();
 
   for (VkSemaphore &semaphore : render_complete_semaphores_) {
-    vkDestroySemaphore(device_, semaphore, nullptr);
+    vkDestroySemaphore(device_.logicalDevice(), semaphore, nullptr);
   }
   render_complete_semaphores_.clear();
 
   if (swapchain_) {
-    vkDestroySwapchainKHR(device_, swapchain_, nullptr);
+    vkDestroySwapchainKHR(device_.logicalDevice(), swapchain_, nullptr);
     swapchain_ = nullptr;
   }
 
   if (depth_image_view) {
-    vkDestroyImageView(device_, depth_image_view, nullptr);
-    vmaDestroyImage(vma_allocator_, depth_image_, depth_image_allocation);
+    vkDestroyImageView(device_.logicalDevice(), depth_image_view, nullptr);
+    vmaDestroyImage(device_.allocator(), depth_image_, depth_image_allocation);
     depth_image_view = nullptr;
   }
 }
@@ -551,7 +271,7 @@ VkShaderModule Application::createShaderModule(const std::string &file_name, sha
   };
 
   VkShaderModule shader_module = VK_NULL_HANDLE;
-  if (vkCreateShaderModule(device_, &module_create_info, nullptr, &shader_module) != VK_SUCCESS) {
+  if (vkCreateShaderModule(device_.logicalDevice(), &module_create_info, nullptr, &shader_module) != VK_SUCCESS) {
     log::error("Error creating shader modulke");
     return nullptr;
   }
@@ -564,7 +284,7 @@ VkPipeline Application::createGraphicsPipeline() {
     .setLayoutCount = 0,
     .pushConstantRangeCount = 0
   };
-  if (vkCreatePipelineLayout(device_, &pipeline_layout_info, nullptr, &pipeline_layout_) != VK_SUCCESS) {
+  if (vkCreatePipelineLayout(device_.logicalDevice(), &pipeline_layout_info, nullptr, &pipeline_layout_) != VK_SUCCESS) {
     log::info("Failed to create pipeline layout");
     return nullptr;
   }
@@ -673,7 +393,7 @@ VkPipeline Application::createGraphicsPipeline() {
   };
 
   VkPipeline new_pipeline = VK_NULL_HANDLE;
-  if (vkCreateGraphicsPipelines(device_, nullptr, 1, &pipeline_info, nullptr, &new_pipeline) != VK_SUCCESS) {
+  if (vkCreateGraphicsPipelines(device_.logicalDevice(), nullptr, 1, &pipeline_info, nullptr, &new_pipeline) != VK_SUCCESS) {
     log::error("Error creating the pipeline");
     return nullptr;
   }
@@ -691,14 +411,14 @@ bool Application::createSyncResources() {
     .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     .pNext = &semaphore_type_info
   };
-  if (vkCreateSemaphore(device_, &semaphore_info, nullptr, &timeline_semaphore) != VK_SUCCESS) {
+  if (vkCreateSemaphore(device_.logicalDevice(), &semaphore_info, nullptr, &timeline_semaphore) != VK_SUCCESS) {
     log::error("Failed to create timeline semaphore");
     return false;
   }
 
   for (FrameResources &res : frame_resources_) {
     VkSemaphoreCreateInfo semaphore_info{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-    if (vkCreateSemaphore(device_, &semaphore_info, nullptr, &res.image_acquired_semaphore) != VK_SUCCESS) {
+    if (vkCreateSemaphore(device_.logicalDevice(), &semaphore_info, nullptr, &res.image_acquired_semaphore) != VK_SUCCESS) {
       log::error("Error creating the per-frame image-acquire semaphore");
       return false;
     }
@@ -711,9 +431,9 @@ bool Application::createCommandBuffers() {
   for (FrameResources &res : frame_resources_) {
     VkCommandPoolCreateInfo pool_info {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-      .queueFamilyIndex = gfx_queue_fam_idx_
+      .queueFamilyIndex = device_.graphicsQueueFamily()
     };
-    if (vkCreateCommandPool(device_, &pool_info, nullptr, &res.command_pool) != VK_SUCCESS) {
+    if (vkCreateCommandPool(device_.logicalDevice(), &pool_info, nullptr, &res.command_pool) != VK_SUCCESS) {
       log::error("Unable to create command buffer pool");
       return false;
     }
@@ -725,7 +445,7 @@ bool Application::createCommandBuffers() {
       .commandBufferCount = 1,
     };
 
-    if (vkAllocateCommandBuffers(device_, &cmd_alloc_info, &res.command_buffer) != VK_SUCCESS) {
+    if (vkAllocateCommandBuffers(device_.logicalDevice(), &cmd_alloc_info, &res.command_buffer) != VK_SUCCESS) {
       log::error("Unable to allocate command buffer");
       return false;
     }
@@ -752,7 +472,7 @@ void Application::run() {
 
 void Application::render() {
   if (require_swapchain_recreate) {
-    vkDeviceWaitIdle(device_);
+    vkDeviceWaitIdle(device_.logicalDevice());
     destroySwapchain();
     if (!createSwapchain()) {
       log::error("Cannot recreate swapchain!");
@@ -777,15 +497,15 @@ void Application::render() {
     .pSemaphores = &timeline_semaphore,
     .pValues = &wait_value
   };
-  vkWaitSemaphores(device_, &wait_info, UINT64_MAX);
+  vkWaitSemaphores(device_.logicalDevice(), &wait_info, UINT64_MAX);
 
   FrameResources &res = frame_resources_[frame_res_index];
-  vkResetCommandPool(device_, res.command_pool, 0);
+  vkResetCommandPool(device_.logicalDevice(), res.command_pool, 0);
 
   VkSemaphore image_acquire_semaphore = frame_resources_[frame_res_index].image_acquired_semaphore;
 
   uint32_t image_index = 0;
-  VkResult acquire_result = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, image_acquire_semaphore, VK_NULL_HANDLE, &image_index);
+  VkResult acquire_result = vkAcquireNextImageKHR(device_.logicalDevice(), swapchain_, UINT64_MAX, image_acquire_semaphore, VK_NULL_HANDLE, &image_index);
 
   if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
     require_swapchain_recreate = true;
@@ -967,7 +687,7 @@ void Application::render() {
     .signalSemaphoreInfoCount = static_cast<uint32_t>(semaphore_signals.size()),
     .pSignalSemaphoreInfos = semaphore_signals.data()
   };
-  vkQueueSubmit2(gfx_queue_, 1, &submit_info, VK_NULL_HANDLE);
+  vkQueueSubmit2(device_.graphicsQueue(), 1, &submit_info, VK_NULL_HANDLE);
 
   VkPresentInfoKHR present_info {
     .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -979,50 +699,35 @@ void Application::render() {
     .pResults = nullptr
   };
 
-  vkQueuePresentKHR(gfx_queue_, &present_info);
+  vkQueuePresentKHR(device_.graphicsQueue(), &present_info);
 }
 
 void Application::shutdown() {
-  if (device_) vkDeviceWaitIdle(device_);
+  if (device_.logicalDevice()) vkDeviceWaitIdle(device_.logicalDevice());
 
   if (timeline_semaphore) {
-    vkDestroySemaphore(device_, timeline_semaphore, nullptr);
+    vkDestroySemaphore(device_.logicalDevice(), timeline_semaphore, nullptr);
   }
   for (auto &res : frame_resources_) {
-    vkDestroySemaphore(device_, res.image_acquired_semaphore, nullptr);
-    vkDestroyCommandPool(device_, res.command_pool, nullptr); // Implicitly destroys buffers too
+    vkDestroySemaphore(device_.logicalDevice(), res.image_acquired_semaphore, nullptr);
+    vkDestroyCommandPool(device_.logicalDevice(), res.command_pool, nullptr); // Implicitly destroys buffers too
   }
   if (pipeline_layout_) {
-    vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
+    vkDestroyPipelineLayout(device_.logicalDevice(), pipeline_layout_, nullptr);
   }
   if (pipeline_) {
-    vkDestroyPipeline(device_, pipeline_, nullptr);
+    vkDestroyPipeline(device_.logicalDevice(), pipeline_, nullptr);
   }
 
   if (vert_shader_) {
-    vkDestroyShaderModule(device_, vert_shader_, nullptr);
+    vkDestroyShaderModule(device_.logicalDevice(), vert_shader_, nullptr);
   }
   if (frag_shader_) {
-    vkDestroyShaderModule(device_, frag_shader_, nullptr);
+    vkDestroyShaderModule(device_.logicalDevice(), frag_shader_, nullptr);
   }
 
   destroySwapchain();
-  if (vma_allocator_) {
-    vmaDestroyAllocator(vma_allocator_);
-  }
-  if (surface_) {
-    vkDestroySurfaceKHR(vulkan_instance_, surface_, nullptr);
-  }
-  if (device_) {
-    vkDestroyDevice(device_, nullptr);
-  }
-  if (debug_messenger_) {
-    vkDestroyDebugUtilsMessengerEXT(vulkan_instance_, debug_messenger_, nullptr);
-  }
-  if (vulkan_instance_) {
-    vkDestroyInstance(vulkan_instance_, nullptr);
-  }
-  volkFinalize();
+  device_.shutdown();
 
   if (window_) {
     SDL_DestroyWindow(window_);
