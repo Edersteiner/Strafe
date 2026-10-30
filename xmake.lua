@@ -21,8 +21,13 @@ add_requires("glm 1.0.3")
 -- Copies runtime files like shaders and assets to the build location
 task("stage_runtime_files")
   on_run(function (targetDir)
-    os.cp("$(projectdir)/assets", targetDir)
-    os.cp("$(projectdir)/shaders", targetDir)
+    -- Git does not track empty folders, so a fresh clone may lack some of these.
+    for _, dir in ipairs({"assets", "shaders"}) do
+      local src = path.join(os.projectdir(), dir)
+      if os.isdir(src) then
+        os.cp(src, targetDir)
+      end
+    end
     cprint("${green}[+]${clear} Staged runtime files")
   end)
 
