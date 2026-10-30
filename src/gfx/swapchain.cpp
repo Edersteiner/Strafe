@@ -32,6 +32,8 @@ bool Swapchain::initialize(Device& device, VkExtent2D desired) {
   if (!createSwapchain(desired, VK_NULL_HANDLE)) {
     return false;
   }
+  // A window that starts minimized has no swapchain yet.
+  require_recreate_ = (swapchain_handle_ == VK_NULL_HANDLE);
   return true;
 }
 
@@ -55,6 +57,8 @@ bool Swapchain::recreate(VkExtent2D desired) {
     vkDestroySwapchainKHR(device_->logicalDevice(), old_swapchain, nullptr);
   }
 
+  // Stays set at 0x0 so recreation is retried until the window is restored.
+  require_recreate_ = !ok || swapchain_handle_ == VK_NULL_HANDLE;
   return ok;
 }
 

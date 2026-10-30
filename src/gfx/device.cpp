@@ -1,10 +1,10 @@
 #include "gfx/device.h"
 
-#include "core/log.h"
 #include "core/flags.h"
+#include "core/log.h"
 
-#include <vector>
 #include <SDL3/SDL_vulkan.h>
+#include <vector>
 
 namespace strafe::gfx {
 
@@ -44,34 +44,39 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
 
 // Helpers to find layers and extensions.
 namespace {
-bool hasInstanceLayer(const char* name) {
+bool hasInstanceLayer(const char *name) {
   uint32_t count = 0;
   vkEnumerateInstanceLayerProperties(&count, nullptr);
   std::vector<VkLayerProperties> layers(count);
   vkEnumerateInstanceLayerProperties(&count, layers.data());
 
   for (VkLayerProperties &layer : layers) {
-    if (strcmp(layer.layerName, name) == 0) { return true; }
+    if (strcmp(layer.layerName, name) == 0) {
+      return true;
+    }
   }
 
   return false;
 }
 
-bool hasInstanceExtension(const char* name) {
+bool hasInstanceExtension(const char *name) {
   uint32_t count = 0;
   vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
   std::vector<VkExtensionProperties> extensions(count);
   vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
 
   for (VkExtensionProperties &extension : extensions) {
-    if (strcmp(extension.extensionName, name) == 0) { return true; }
+    if (strcmp(extension.extensionName, name) == 0) {
+      return true;
+    }
   }
 
   return false;
 }
-}
+} // namespace
 
-bool Device::initialize(SDL_Window* window, VkFormat requested_swapchain_format) {
+bool Device::initialize(SDL_Window *window,
+                        VkFormat requested_swapchain_format) {
   if (!createVulkanInstance()) {
     log::error("Failed to create vulkan instance");
     return false;
@@ -130,13 +135,12 @@ bool Device::initializeVMA() {
 
   VmaVulkanFunctions vma_func_info{};
   VmaAllocatorCreateInfo vma_alloc_info{
-    .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-    .physicalDevice = physical_device_,
-    .device = logical_device_,
-    .pVulkanFunctions = &vma_func_info,
-    .instance = instance_,
-    .vulkanApiVersion = kVulkanVersion
-  };
+      .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+      .physicalDevice = physical_device_,
+      .device = logical_device_,
+      .pVulkanFunctions = &vma_func_info,
+      .instance = instance_,
+      .vulkanApiVersion = kVulkanVersion};
 
   vmaImportVulkanFunctionsFromVolk(&vma_alloc_info, &vma_func_info);
 
@@ -164,8 +168,11 @@ bool Device::createVulkanInstance() {
   const char *const *extensions =
       SDL_Vulkan_GetInstanceExtensions(&inst_ext_count);
 
-  bool use_validation_layer = flags::kEnableValidation && hasInstanceLayer("VK_LAYER_KHRONOS_validation");
-  bool use_debug_utils = flags::kEnableValidation && hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  bool use_validation_layer = flags::kEnableValidation &&
+                              hasInstanceLayer("VK_LAYER_KHRONOS_validation");
+  bool use_debug_utils =
+      flags::kEnableValidation &&
+      hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
   std::vector<const char *> requested_extensions{};
 
@@ -184,37 +191,37 @@ bool Device::createVulkanInstance() {
   }
 
   VkInstanceCreateInfo inst_create_info{
-    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-    .pApplicationInfo = &app_info,
-    .enabledLayerCount = static_cast<uint32_t>(requested_layers.size()),
-    .ppEnabledLayerNames = requested_layers.data(),
-    .enabledExtensionCount =
-      static_cast<uint32_t>(requested_extensions.size()),
-    .ppEnabledExtensionNames = requested_extensions.data(),
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pApplicationInfo = &app_info,
+      .enabledLayerCount = static_cast<uint32_t>(requested_layers.size()),
+      .ppEnabledLayerNames = requested_layers.data(),
+      .enabledExtensionCount =
+          static_cast<uint32_t>(requested_extensions.size()),
+      .ppEnabledExtensionNames = requested_extensions.data(),
   };
 
   VkDebugUtilsMessengerCreateInfoEXT debug_info{};
   if (use_debug_utils) {
     debug_info = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-      .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-      .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                     VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-      .pfnUserCallback = debugCallback};
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .pfnUserCallback = debugCallback};
     inst_create_info.pNext = &debug_info;
   }
 
-  if (vkCreateInstance(&inst_create_info, nullptr, &instance_) !=
-      VK_SUCCESS) {
+  if (vkCreateInstance(&inst_create_info, nullptr, &instance_) != VK_SUCCESS) {
     return false;
   }
 
   volkLoadInstance(instance_);
 
   if (use_debug_utils) {
-    if (vkCreateDebugUtilsMessengerEXT(instance_, &debug_info, nullptr, &debug_messenger_) != VK_SUCCESS) {
+    if (vkCreateDebugUtilsMessengerEXT(instance_, &debug_info, nullptr,
+                                       &debug_messenger_) != VK_SUCCESS) {
       log::error("Failed to create debug messenger");
       return false;
     }
@@ -223,13 +230,12 @@ bool Device::createVulkanInstance() {
   return true;
 }
 
-bool Device::createSurface(SDL_Window* window) {
+bool Device::createSurface(SDL_Window *window) {
   if (!instance_) {
     log::error("Cannot create surface without valid VkInstance");
     return false;
   }
-  if (!SDL_Vulkan_CreateSurface(window, instance_, nullptr,
-                                &surface_)) {
+  if (!SDL_Vulkan_CreateSurface(window, instance_, nullptr, &surface_)) {
     log::error("SDL_Vulkan_CreateSurface failed");
     return false;
   }
@@ -240,8 +246,7 @@ bool Device::findPhysicalDevice(VkFormat requested_swapchain_format) {
   uint32_t phys_device_count = 0;
   vkEnumeratePhysicalDevices(instance_, &phys_device_count, nullptr);
   std::vector<VkPhysicalDevice> devices(phys_device_count);
-  vkEnumeratePhysicalDevices(instance_, &phys_device_count,
-                             devices.data());
+  vkEnumeratePhysicalDevices(instance_, &phys_device_count, devices.data());
 
   VkPhysicalDevice physical_device = nullptr;
   if (phys_device_count) {
@@ -262,9 +267,11 @@ bool Device::findPhysicalDevice(VkFormat requested_swapchain_format) {
 
   // Ensure that picked device supports swapchain_format_
   uint32_t fmt_count = 0;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count, nullptr);
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count,
+                                       nullptr);
   std::vector<VkSurfaceFormatKHR> surface_formats(fmt_count);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count, surface_formats.data());
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count,
+                                       surface_formats.data());
 
   bool format_supported = false;
   for (const VkSurfaceFormatKHR &surface_format : surface_formats) {
@@ -374,12 +381,13 @@ bool Device::createLogicalDevice() {
       .ppEnabledExtensionNames = device_extensions.data(),
       .pEnabledFeatures = nullptr};
 
-  if (vkCreateDevice(physical_device_, &dev_create_info, nullptr, &logical_device_) !=
-      VK_SUCCESS) {
+  if (vkCreateDevice(physical_device_, &dev_create_info, nullptr,
+                     &logical_device_) != VK_SUCCESS) {
     return false;
   }
 
-  vkGetDeviceQueue(logical_device_, graphics_queue_family_idx_, 0, &graphics_queue_);
+  vkGetDeviceQueue(logical_device_, graphics_queue_family_idx_, 0,
+                   &graphics_queue_);
   if (!graphics_queue_) {
     log::info("Failed to get graphics queue from device");
     return false;
@@ -387,4 +395,4 @@ bool Device::createLogicalDevice() {
   return true;
 }
 
-}
+} // namespace strafe::gfx

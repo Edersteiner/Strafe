@@ -1,6 +1,8 @@
 #pragma once
 
 #include <volk.h>
+
+// VMA after volk
 #include <vk_mem_alloc.h>
 
 struct SDL_Window;
@@ -13,13 +15,13 @@ public:
   Device() = default;
   ~Device() = default;
 
-  Device(const Device&) = delete;
-  Device &operator=(const Device&) = delete;
+  Device(const Device &) = delete;
+  Device &operator=(const Device &) = delete;
 
-  bool initialize(SDL_Window* window, VkFormat requested_swapchain_format);
+  bool initialize(SDL_Window *window, VkFormat requested_swapchain_format);
   void shutdown();
 
-  VkDevice logicalDevice() const {return logical_device_; }
+  VkDevice logicalDevice() const { return logical_device_; }
   VkPhysicalDevice physicalDevice() const { return physical_device_; }
   VkSurfaceKHR surface() const { return surface_; }
   VmaAllocator allocator() const { return vma_allocator_; }
@@ -32,7 +34,7 @@ private:
   bool initializeVMA();
   bool createVulkanInstance();
 
-  bool createSurface(SDL_Window* window);
+  bool createSurface(SDL_Window *window);
 
   bool findPhysicalDevice(VkFormat requested_swapchain_format);
   bool findGraphicsQueue();
@@ -53,4 +55,4 @@ private:
   VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
 };
 
-}
+} // namespace strafe::gfx

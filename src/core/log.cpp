@@ -43,8 +43,8 @@ bool use_color() {
     if (handle == INVALID_HANDLE_VALUE || !GetConsoleMode(handle, &mode)) {
       return false;
     }
-    return SetConsoleMode(handle,
-                          mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+    return SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) !=
+           0;
   }();
   return console;
 #else

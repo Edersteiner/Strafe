@@ -1,11 +1,10 @@
 #pragma once
 
 #include "gfx/device.h"
+#include "gfx/framering.h"
 #include "gfx/swapchain.h"
 
 #include <string>
-#include <vector>
-#include <array>
 
 #include <SDL3/SDL.h>
 #include <volk.h>
@@ -18,8 +17,6 @@
 
 namespace strafe {
 
-
-
 class Application {
 public:
   bool initialize();
@@ -27,19 +24,13 @@ public:
   void shutdown();
 
 private:
-  const static uint32_t kVulkanVersion = VK_API_VERSION_1_4;
-  const static uint32_t kMaxFramesInFlight = 2;
-
   bool initializeVulkan();
   bool createDepthBuffer();
   void destroyDepthBuffer();
   bool createShaders();
-  VkShaderModule createShaderModule(const std::string &file_name, shaderc_shader_kind kind) const;
+  VkShaderModule createShaderModule(const std::string &file_name,
+                                    shaderc_shader_kind kind) const;
   VkPipeline createGraphicsPipeline();
-  bool createSyncResources();
-  bool createCommandBuffers();
-
-  VkExtent2D chooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &caps) const;
 
   void render();
 
@@ -48,13 +39,9 @@ private:
   SDL_Window *window_ = nullptr;
   int width_ = 1280, height_ = 720;
 
-  uint32_t frame_index_ = 0;
-  uint64_t next_signal_value = kMaxFramesInFlight + 1;
-
   gfx::Device device_;
   gfx::Swapchain swapchain_;
-
-  bool require_swapchain_recreate = false;
+  gfx::FrameRing frame_ring_;
 
   VkImage depth_image_ = VK_NULL_HANDLE;
   VkImageView depth_image_view_ = VK_NULL_HANDLE;
@@ -66,5 +53,5 @@ private:
 
   VkPipeline pipeline_ = VK_NULL_HANDLE;
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
-  };
+};
 } // namespace strafe

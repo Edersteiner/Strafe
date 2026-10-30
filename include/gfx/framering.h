@@ -2,12 +2,14 @@
 
 #include <volk.h>
 
-#include <cstdint>
 #include <array>
+#include <cstdint>
+#include <optional>
 
 namespace strafe::gfx {
 
 class Device;
+class Swapchain;
 
 struct FrameResources {
   VkCommandPool command_pool = VK_NULL_HANDLE;
@@ -18,6 +20,7 @@ struct FrameResources {
 struct FrameContext {
   VkCommandBuffer cmd = VK_NULL_HANDLE;
   uint32_t image_index = 0;
+  uint32_t frame_slot = 0;
   uint64_t signal_value = 0;
 };
 
@@ -26,18 +29,19 @@ public:
   FrameRing() = default;
   ~FrameRing() = default;
 
-  FrameRing(const FrameRing&) = delete;
-  FrameRing &operator=(const FrameRing&) = delete;
+  FrameRing(const FrameRing &) = delete;
+  FrameRing &operator=(const FrameRing &) = delete;
 
-  bool initialize(Device& device);
+  bool initialize(Device &device);
   void shutdown();
 
-  void render();
+  std::optional<FrameContext> beginFrame(Swapchain &swapchain);
+  void endFrame(const FrameContext &ctx, Swapchain &swapchain);
 
 private:
   static constexpr uint32_t kMaxFramesInFlight = 2;
 
-  Device* device_ = nullptr;
+  Device *device_ = nullptr;
 
   bool createSyncResources();
   bool createCommandBuffers();
@@ -49,4 +53,4 @@ private:
   std::array<FrameResources, kMaxFramesInFlight> frame_resources_;
 };
 
-}
+} // namespace strafe::gfx

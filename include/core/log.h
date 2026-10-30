@@ -35,8 +35,7 @@ template <typename... Args> struct FormatWithLocation {
   template <typename T>
     requires std::convertible_to<const T &, std::string_view>
   consteval FormatWithLocation(
-      const T &str,
-      std::source_location loc = std::source_location::current())
+      const T &str, std::source_location loc = std::source_location::current())
       : fmt(str), location(loc) {}
 };
 
@@ -59,28 +58,23 @@ void write(Format<Args...> fmt, Args &&...args) {
 }
 } // namespace detail
 
-template <typename... Args>
-void trace(Format<Args...> fmt, Args &&...args) {
+template <typename... Args> void trace(Format<Args...> fmt, Args &&...args) {
   detail::write<Level::Trace>(fmt, std::forward<Args>(args)...);
 }
 
-template <typename... Args>
-void debug(Format<Args...> fmt, Args &&...args) {
+template <typename... Args> void debug(Format<Args...> fmt, Args &&...args) {
   detail::write<Level::Debug>(fmt, std::forward<Args>(args)...);
 }
 
-template <typename... Args>
-void info(Format<Args...> fmt, Args &&...args) {
+template <typename... Args> void info(Format<Args...> fmt, Args &&...args) {
   detail::write<Level::Info>(fmt, std::forward<Args>(args)...);
 }
 
-template <typename... Args>
-void warn(Format<Args...> fmt, Args &&...args) {
+template <typename... Args> void warn(Format<Args...> fmt, Args &&...args) {
   detail::write<Level::Warn>(fmt, std::forward<Args>(args)...);
 }
 
-template <typename... Args>
-void error(Format<Args...> fmt, Args &&...args) {
+template <typename... Args> void error(Format<Args...> fmt, Args &&...args) {
   detail::write<Level::Error>(fmt, std::forward<Args>(args)...);
 }
 
