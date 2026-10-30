@@ -26,6 +26,8 @@ void FrameRing::shutdown() {
     return;
   }
 
+  deletion_queue_.flushAll();
+
   if (timeline_semaphore_) {
     vkDestroySemaphore(device_->logicalDevice(), timeline_semaphore_, nullptr);
     timeline_semaphore_ = VK_NULL_HANDLE;
@@ -60,6 +62,11 @@ std::optional<FrameContext> FrameRing::beginFrame(Swapchain &swapchain) {
                                 .pSemaphores = &timeline_semaphore_,
                                 .pValues = &wait_value};
   vkWaitSemaphores(device_->logicalDevice(), &wait_info, UINT64_MAX);
+
+  uint64_t current_value = 0;
+  vkGetSemaphoreCounterValue(device_->logicalDevice(), timeline_semaphore_,
+                             &current_value);
+  deletion_queue_.flush(current_value);
 
   FrameResources &res = frame_resources_[slot];
   vkResetCommandPool(device_->logicalDevice(), res.command_pool, 0);
@@ -197,6 +204,11 @@ bool FrameRing::createCommandBuffers() {
     }
   }
   return true;
+}
+
+void FrameRing::deferDestroy(std::function<void()> destroy_fn) {
+  // The value of next_signal_value_ - 1 is the most recently started frame
+  deletion_queue_.push(next_signal_value_ - 1, std::move(destroy_fn));
 }
 
 } // namespace strafe::gfx

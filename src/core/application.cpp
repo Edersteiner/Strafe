@@ -459,17 +459,29 @@ void Application::shutdown() {
   }
 
   if (pipeline_layout_) {
-    vkDestroyPipelineLayout(device_.logicalDevice(), pipeline_layout_, nullptr);
+    frame_ring_.deferDestroy(
+        [device = device_.logicalDevice(), handle = pipeline_layout_] {
+          vkDestroyPipelineLayout(device, handle, nullptr);
+        });
   }
   if (pipeline_) {
-    vkDestroyPipeline(device_.logicalDevice(), pipeline_, nullptr);
+    frame_ring_.deferDestroy(
+        [device = device_.logicalDevice(), handle = pipeline_] {
+          vkDestroyPipeline(device, handle, nullptr);
+        });
   }
 
   if (vert_shader_) {
-    vkDestroyShaderModule(device_.logicalDevice(), vert_shader_, nullptr);
+    frame_ring_.deferDestroy(
+        [device = device_.logicalDevice(), handle = vert_shader_] {
+          vkDestroyShaderModule(device, handle, nullptr);
+        });
   }
   if (frag_shader_) {
-    vkDestroyShaderModule(device_.logicalDevice(), frag_shader_, nullptr);
+    frame_ring_.deferDestroy(
+        [device = device_.logicalDevice(), handle = frag_shader_] {
+          vkDestroyShaderModule(device, handle, nullptr);
+        });
   }
 
   frame_ring_.shutdown();

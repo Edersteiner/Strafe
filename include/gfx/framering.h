@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gfx/deletion_queue.h"
+
 #include <volk.h>
 
 #include <array>
@@ -38,13 +40,16 @@ public:
   std::optional<FrameContext> beginFrame(Swapchain &swapchain);
   void endFrame(const FrameContext &ctx, Swapchain &swapchain);
 
+  void deferDestroy(std::function<void()> destroy_fn);
+
 private:
   static constexpr uint32_t kMaxFramesInFlight = 2;
 
-  Device *device_ = nullptr;
-
   bool createSyncResources();
   bool createCommandBuffers();
+
+  Device *device_ = nullptr;
+  DeletionQueue deletion_queue_;
 
   uint32_t frame_index_ = 0;
   uint64_t next_signal_value_ = kMaxFramesInFlight + 1;
