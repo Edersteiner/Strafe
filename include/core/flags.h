@@ -4,9 +4,9 @@
 namespace strafe::flags {
 
 #ifdef STRAFE_DEBUG
-  inline constexpr bool kEnableValidation = true;
+inline constexpr bool kEnableValidation = true;
 #else
-  inline constexpr bool kEnableValidation = false;
+inline constexpr bool kEnableValidation = false;
 #endif
 
-}
+} // namespace strafe::flags

@@ -1,0 +1,27 @@
+# Strafe Engine formatting, built on LLVM style.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+
+IndentWidth: 2
+ColumnLimit: 80
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+AccessModifierOffset: -2
+NamespaceIndentation: None
+FixNamespaceComments: true
+
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortBlocksOnASingleLine: Never
+
+# Blank lines separate include groups. Sorting happens within each group.
+IncludeBlocks: Preserve
+# volk must come before VMA, which pulls in the Vulkan headers.
+IncludeCategories:
+  - Regex: '^<volk\.h>$'
+    Priority: 1
+  - Regex: '^<vk_mem_alloc\.h>$'
+    Priority: 2
+  - Regex: '.*'
+    Priority: 3

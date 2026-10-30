@@ -31,29 +31,32 @@ struct LevelStyle {
 };
 
 constexpr LevelStyle kStyles[] = {
-    {"TRACE", "\x1b[90m"}, {"DEBUG", "\x1b[36m"}, {"INFO ", "\x1b[32m"},
-    {"WARN ", "\x1b[33m"}, {"ERROR", "\x1b[31m"},
+    {.name = "TRACE", .color = "\x1b[90m"},
+    {.name = "DEBUG", .color = "\x1b[36m"},
+    {.name = "INFO ", .color = "\x1b[32m"},
+    {.name = "WARN ", .color = "\x1b[33m"},
+    {.name = "ERROR", .color = "\x1b[31m"},
 };
 
-bool use_color() {
+bool useColor() {
 #ifdef _WIN32
-  static const bool console = [] {
+  static const bool kConsole = [] {
     const HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
     DWORD mode = 0;
     if (handle == INVALID_HANDLE_VALUE || !GetConsoleMode(handle, &mode)) {
       return false;
     }
-    return SetConsoleMode(handle,
-                          mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+    return SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) !=
+           0;
   }();
-  return console;
+  return kConsole;
 #else
-  static const bool tty = isatty(fileno(stderr));
-  return tty;
+  static const bool kTty = isatty(fileno(stderr));
+  return kTty;
 #endif
 }
 
-std::string_view file_name(const char *path) {
+std::string_view fileName(const char *path) {
   const std::string_view view = path;
   const std::size_t slash = view.find_last_of("/\\");
   return slash == std::string_view::npos ? view : view.substr(slash + 1);
@@ -61,11 +64,11 @@ std::string_view file_name(const char *path) {
 
 } // namespace
 
-void set_level(Level level) {
+void setLevel(Level level) {
   detail::g_level.store(level, std::memory_order_relaxed);
 }
 
-Level get_level() { return detail::g_level.load(std::memory_order_relaxed); }
+Level getLevel() { return detail::g_level.load(std::memory_order_relaxed); }
 
 void detail::vwrite(Level level, std::source_location location,
                     std::string_view fmt, std::format_args args) {
@@ -76,11 +79,11 @@ void detail::vwrite(Level level, std::source_location location,
   const auto elapsed =
       std::chrono::duration<double>(Clock::now() - kStart).count();
   const LevelStyle &style = kStyles[static_cast<std::size_t>(level)];
-  const bool color = use_color();
+  const bool color = useColor();
 
   auto out = std::back_inserter(buffer);
   std::format_to(out, "[{:10.3f}] ", elapsed);
-  const std::string_view file = file_name(location.file_name());
+  const std::string_view file = fileName(location.file_name());
   if (color) {
     std::format_to(out, "{}{}\x1b[0m \x1b[90m{}:{}\x1b[0m ", style.color,
                    style.name, file, location.line());
