@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vk_mem_alloc.h>
 #include <volk.h>
+#include <vk_mem_alloc.h>
 
 #include <vector>
 
@@ -39,7 +39,7 @@ public:
   bool requireRecreate() const { return require_recreate_; }
 
 private:
-  bool createSwapchain(VkExtent2D desired, VkSwapchainKHR oldSwapchain);
+  bool createSwapchain(VkExtent2D desired, VkSwapchainKHR old_swapchain);
   void destroyImageResources();
   void destroySwapchain();
 

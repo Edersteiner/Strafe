@@ -45,9 +45,9 @@ bool Application::initializeVulkan() {
     log::error("Failed to initialize the GPU device");
     return false;
   }
-  if (!swapchain_.initialize(device_,
-                             VkExtent2D{static_cast<uint32_t>(width_),
-                                        static_cast<uint32_t>(height_)})) {
+  if (!swapchain_.initialize(
+          device_, VkExtent2D{.width = static_cast<uint32_t>(width_),
+                              .height = static_cast<uint32_t>(height_)})) {
     log::error("Failed to create swapchain");
     return false;
   }
@@ -141,15 +141,15 @@ bool Application::createShaders() {
 VkShaderModule Application::createShaderModule(const std::string &file_name,
                                                shaderc_shader_kind kind) const {
   // Read shader file from disk
-  const std::string shaderPath = utils::basePath() + "shaders/" + file_name;
-  const std::string src = utils::readTextFile(shaderPath);
+  const std::string shader_path = utils::basePath() + "shaders/" + file_name;
+  const std::string src = utils::readTextFile(shader_path);
   if (src.empty()) {
-    log::error("Specified shader file doesn't exist: {}", shaderPath);
+    log::error("Specified shader file doesn't exist: {}", shader_path);
     return nullptr;
   }
 
   // Compile shader to SPIR-V
-  log::info("Compiling shader: {}", shaderPath);
+  log::info("Compiling shader: {}", shader_path);
   shaderc::Compiler compiler;
   shaderc::CompileOptions opts;
   // This version of shaderc does not include shaderc_env_version_vulkan_1_4, so
@@ -317,8 +317,9 @@ void Application::run() {
 
 void Application::render() {
   if (swapchain_.requireRecreate()) {
-    if (!swapchain_.recreate(VkExtent2D{static_cast<uint32_t>(width_),
-                                        static_cast<uint32_t>(height_)})) {
+    if (!swapchain_.recreate(
+            VkExtent2D{.width = static_cast<uint32_t>(width_),
+                       .height = static_cast<uint32_t>(height_)})) {
       log::error("Cannot recreate swapchain!");
       running_ = false;
       return;
@@ -394,7 +395,7 @@ void Application::render() {
       .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
       .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
       .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-      .clearValue{.depthStencil{1.0f, 0}}};
+      .clearValue{.depthStencil{.depth = 1.0f, .stencil = 0}}};
 
   VkRenderingInfo rendering_info{
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -453,8 +454,9 @@ void Application::render() {
 }
 
 void Application::shutdown() {
-  if (device_.logicalDevice())
+  if (device_.logicalDevice()) {
     vkDeviceWaitIdle(device_.logicalDevice());
+  }
 
   if (pipeline_layout_) {
     vkDestroyPipelineLayout(device_.logicalDevice(), pipeline_layout_, nullptr);

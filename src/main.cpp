@@ -1,8 +1,6 @@
-#include <iostream>
-
 #include "core/application.h"
 
-int main(int argc, char **argv) {
+int main() {
   strafe::Application app;
   if (app.initialize()) {
     app.run();

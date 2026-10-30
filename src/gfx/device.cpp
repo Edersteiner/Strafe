@@ -8,13 +8,14 @@
 
 namespace strafe::gfx {
 
+namespace {
 // Connect Vulkan Debug Callback so validation layer
 // messages go through strafe::log and it's related severities.
 VKAPI_ATTR VkBool32 VKAPI_CALL
 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
               VkDebugUtilsMessageTypeFlagsEXT message_typ,
               const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data,
-              void *p_user_data) {
+              void * /*p_user_data*/) {
   const char *type = "general";
   if (message_typ & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
     type = "validation";
@@ -43,7 +44,6 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
 }
 
 // Helpers to find layers and extensions.
-namespace {
 bool hasInstanceLayer(const char *name) {
   uint32_t count = 0;
   vkEnumerateInstanceLayerProperties(&count, nullptr);
@@ -219,12 +219,11 @@ bool Device::createVulkanInstance() {
 
   volkLoadInstance(instance_);
 
-  if (use_debug_utils) {
-    if (vkCreateDebugUtilsMessengerEXT(instance_, &debug_info, nullptr,
-                                       &debug_messenger_) != VK_SUCCESS) {
-      log::error("Failed to create debug messenger");
-      return false;
-    }
+  if (use_debug_utils &&
+      vkCreateDebugUtilsMessengerEXT(instance_, &debug_info, nullptr,
+                                     &debug_messenger_) != VK_SUCCESS) {
+    log::error("Failed to create debug messenger");
+    return false;
   }
 
   return true;

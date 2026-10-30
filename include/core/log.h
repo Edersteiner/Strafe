@@ -20,8 +20,8 @@ inline constexpr Level kCompiledLevel = Level::Info;
 inline constexpr Level kCompiledLevel = Level::Trace;
 #endif
 
-void set_level(Level level);
-Level get_level();
+void setLevel(Level level);
+Level getLevel();
 
 namespace detail {
 extern std::atomic<Level> g_level;
@@ -32,9 +32,10 @@ template <typename... Args> struct FormatWithLocation {
   std::format_string<Args...> fmt;
   std::source_location location;
 
+  // Implicit so a string literal at the call site converts into this type.
   template <typename T>
     requires std::convertible_to<const T &, std::string_view>
-  consteval FormatWithLocation(
+  consteval FormatWithLocation( // NOLINT(misc-explicit-constructor)
       const T &str, std::source_location loc = std::source_location::current())
       : fmt(str), location(loc) {}
 };

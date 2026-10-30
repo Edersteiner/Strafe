@@ -6,8 +6,8 @@
 
 #include <string>
 
-#include <SDL3/SDL.h>
 #include <volk.h>
+#include <SDL3/SDL.h>
 
 // Include after volk. The implementation is compiled in src/core/vma.cpp.
 #include <vk_mem_alloc.h>

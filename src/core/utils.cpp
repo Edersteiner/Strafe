@@ -15,7 +15,7 @@ std::string readTextFile(const std::string &file_path) {
     infile.close();
     return output;
   }
-  return std::string();
+  return {};
 }
 
 std::string basePath() { return SDL_GetBasePath(); }
