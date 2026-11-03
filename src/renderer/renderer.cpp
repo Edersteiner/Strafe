@@ -2,16 +2,23 @@
 
 #include "core/log.h"
 #include "core/utils.h"
+#include "gfx/buffer.h"
 #include "gfx/device.h"
 #include "gfx/framering.h"
 #include "gfx/swapchain.h"
 
+#include "vulkan/vulkan_core.h"
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 // Todo: replace shaderc and glsl with Slang.
 #include <shaderc/shaderc.hpp>
+
+#include <glm/glm.hpp>
 
 // This currently hardcodes pipelines and drawing
 // but this will eventually serve as the orchestrator
@@ -65,6 +72,32 @@ VkShaderModule createShaderModule(VkDevice device, const std::string &file_name,
   }
   return shader_module;
 }
+
+struct Vertex {
+  glm::vec3 position;
+  glm::vec3 color;
+};
+
+static_assert(sizeof(Vertex) == 24);
+static_assert(offsetof(Vertex, position) == 0);
+static_assert(offsetof(Vertex, color) == 12);
+static_assert(std::is_trivially_copyable_v<Vertex>);
+
+struct PushConstants {
+  VkDeviceAddress vertex_buffer = 0;
+};
+
+static_assert(sizeof(PushConstants) == 8);
+static_assert(offsetof(PushConstants, vertex_buffer) == 0);
+
+constexpr std::array<Vertex, 3> kTriangleVerts{
+    Vertex{.position = {0.0f, -0.5f, 0.0f}, .color = {1.0f, 0.0f, 0.0f}},
+    Vertex{.position = {-0.5f, 0.5f, 0.0f}, .color = {0.0f, 1.0f, 0.0f}},
+    Vertex{.position = {0.5f, 0.5f, 0.0f}, .color = {0.0f, 0.0f, 1.0f}}};
+
+constexpr VkShaderStageFlags kPushConstantStages =
+    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
 } // namespace
 
 bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
@@ -81,6 +114,10 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
   }
   if (!createShaders()) {
     log::error("Failed to create shaders");
+    return false;
+  }
+  if (!createVertexBuffer()) {
+    log::error("Failed to create vertex buffer");
     return false;
   }
   if (pipeline_ = createGraphicsPipeline(); !pipeline_) {
@@ -107,6 +144,13 @@ void Renderer::shutdown() {
       vkDestroyPipeline(device, handle, nullptr);
     });
     pipeline_ = VK_NULL_HANDLE;
+  }
+
+  if (vertex_buffer_.handle) {
+    frame_ring_->deferDestroy([device = device_, buffer = vertex_buffer_] {
+      gfx::destroyBuffer(*device, buffer);
+    });
+    vertex_buffer_ = {};
   }
 
   if (vert_shader_) {
@@ -201,11 +245,32 @@ bool Renderer::createShaders() {
   return true;
 }
 
+bool Renderer::createVertexBuffer() {
+  const std::span<const std::byte> bytes =
+      std::as_bytes(std::span(kTriangleVerts));
+
+  auto new_buffer = gfx::createBuffer(*device_, bytes.size(), 0);
+
+  if (!new_buffer) {
+    log::error("Failed to create vertex buffer");
+    return false;
+  }
+
+  vertex_buffer_ = *new_buffer;
+
+  return gfx::writeBuffer(*device_, vertex_buffer_, bytes);
+}
+
 VkPipeline Renderer::createGraphicsPipeline() {
+  VkPushConstantRange push_constant_range{.stageFlags = kPushConstantStages,
+                                          .offset = 0,
+                                          .size = sizeof(PushConstants)};
+
   VkPipelineLayoutCreateInfo pipeline_layout_info{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount = 0,
-      .pushConstantRangeCount = 0};
+      .pushConstantRangeCount = 1,
+      .pPushConstantRanges = &push_constant_range};
   if (vkCreatePipelineLayout(device_->logicalDevice(), &pipeline_layout_info,
                              nullptr, &pipeline_layout_) != VK_SUCCESS) {
     log::error("Failed to create pipeline layout");
@@ -400,6 +465,11 @@ void Renderer::render(const gfx::FrameContext &ctx,
     vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+
+    const PushConstants push{.vertex_buffer = vertex_buffer_.address};
+    vkCmdPushConstants(ctx.cmd, pipeline_layout_, kPushConstantStages, 0,
+                       sizeof(push), &push);
+
     vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
   }
   // End dynamic rendering

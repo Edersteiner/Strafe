@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gfx/buffer.h"
 #include "renderer/frame_desc.h"
 
 #include <volk.h>
@@ -41,6 +42,7 @@ private:
   bool createDepthBuffer(VkExtent2D extent);
   void destroyDepthBuffer();
   bool createShaders();
+  bool createVertexBuffer();
   VkPipeline createGraphicsPipeline();
 
   gfx::Device *device_ = nullptr;
@@ -56,6 +58,8 @@ private:
 
   VkPipeline pipeline_ = VK_NULL_HANDLE;
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
+
+  gfx::Buffer vertex_buffer_;
 };
 
 } // namespace strafe::renderer
