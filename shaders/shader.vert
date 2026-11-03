@@ -13,13 +13,15 @@ layout(buffer_reference, scalar) readonly buffer VertexBuffer {
 };
 
 layout(push_constant, scalar) uniform PushConstants {
+  mat4 transform;
   VertexBuffer vertex_buffer;
+  vec4 color;
 } pc;
 
 layout(location = 0) out vec3 outColor;
 
 void main() {
   Vertex vertex = pc.vertex_buffer.vertices[gl_VertexIndex];
-  gl_Position = vec4(vertex.position, 1.0);
-  outColor = vertex.color;
+  gl_Position = pc.transform * vec4(vertex.position, 1.0);
+  outColor = vertex.color * pc.color.rgb;
 }

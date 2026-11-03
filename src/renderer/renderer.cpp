@@ -84,16 +84,20 @@ static_assert(offsetof(Vertex, color) == 12);
 static_assert(std::is_trivially_copyable_v<Vertex>);
 
 struct PushConstants {
+  glm::mat4 transform = glm::mat4(1.0f);
   VkDeviceAddress vertex_buffer = 0;
+  glm::vec4 color = glm::vec4(1.0f);
 };
 
-static_assert(sizeof(PushConstants) == 8);
-static_assert(offsetof(PushConstants, vertex_buffer) == 0);
+static_assert(sizeof(PushConstants) == 88);
+static_assert(offsetof(PushConstants, transform) == 0);
+static_assert(offsetof(PushConstants, vertex_buffer) == 64);
+static_assert(offsetof(PushConstants, color) == 72);
 
 constexpr std::array<Vertex, 3> kTriangleVerts{
-    Vertex{.position = {0.0f, -0.5f, 0.0f}, .color = {1.0f, 0.0f, 0.0f}},
-    Vertex{.position = {-0.5f, 0.5f, 0.0f}, .color = {0.0f, 1.0f, 0.0f}},
-    Vertex{.position = {0.5f, 0.5f, 0.0f}, .color = {0.0f, 0.0f, 1.0f}}};
+    Vertex{.position = {-0.5f, -0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}},
+    Vertex{.position = {-0.5f, 0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}},
+    Vertex{.position = {0.5f, 0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}}};
 
 constexpr VkShaderStageFlags kPushConstantStages =
     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -303,7 +307,7 @@ VkPipeline Renderer::createGraphicsPipeline() {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
       .depthTestEnable = VK_TRUE,
       .depthWriteEnable = VK_TRUE,
-      .depthCompareOp = VK_COMPARE_OP_LESS,
+      .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
       .stencilTestEnable = VK_FALSE};
 
   VkPipelineViewportStateCreateInfo viewport_info{
@@ -379,8 +383,7 @@ VkPipeline Renderer::createGraphicsPipeline() {
   return new_pipeline;
 }
 
-void Renderer::render(const gfx::FrameContext &ctx,
-                      const FrameDesc & /*desc*/) {
+void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   const VkExtent2D extent = swapchain_->extent();
 
   // Transition the color and depth images
@@ -466,11 +469,14 @@ void Renderer::render(const gfx::FrameContext &ctx,
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 
-    const PushConstants push{.vertex_buffer = vertex_buffer_.address};
-    vkCmdPushConstants(ctx.cmd, pipeline_layout_, kPushConstantStages, 0,
-                       sizeof(push), &push);
-
-    vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
+    for (const auto &draw : desc.draws) {
+      const PushConstants push{.transform = draw.transform,
+                               .vertex_buffer = vertex_buffer_.address,
+                               .color = draw.color};
+      vkCmdPushConstants(ctx.cmd, pipeline_layout_, kPushConstantStages, 0,
+                         sizeof(push), &push);
+      vkCmdDraw(ctx.cmd, static_cast<uint32_t>(kTriangleVerts.size()), 1, 0, 0);
+    }
   }
   // End dynamic rendering
   vkCmdEndRendering(ctx.cmd);

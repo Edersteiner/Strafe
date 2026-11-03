@@ -3,6 +3,7 @@
 #include "gfx/device.h"
 #include "gfx/framering.h"
 #include "gfx/swapchain.h"
+#include "renderer/frame_desc.h"
 #include "renderer/renderer.h"
 
 #include <SDL3/SDL.h>
@@ -30,5 +31,6 @@ private:
   gfx::FrameRing frame_ring_;
 
   renderer::Renderer renderer_;
+  renderer::FrameDesc frame_desc_;
 };
 } // namespace strafe

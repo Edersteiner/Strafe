@@ -92,7 +92,11 @@ void Application::render() {
     return;
   }
 
-  renderer_.render(*frame, renderer::FrameDesc{});
+  frame_desc_.draws.clear();
+
+  frame_desc_.draws.push_back({});
+
+  renderer_.render(*frame, frame_desc_);
   frame_ring_.endFrame(*frame, swapchain_);
 }
 
