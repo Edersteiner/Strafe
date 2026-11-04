@@ -1,5 +1,7 @@
 #include "core/application.h"
 
+#include "SDL3/SDL_events.h"
+#include "demo/week1_house.h"
 #include <cstdint>
 #include <optional>
 
@@ -65,6 +67,10 @@ void Application::run() {
       } else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
         SDL_GetWindowSizeInPixels(window_, &width_, &height_);
         swapchain_.markForRecreate();
+      } else if (event.type == SDL_EVENT_KEY_DOWN) {
+        if (event.key.key == SDLK_SPACE && !event.key.repeat) {
+          demo::cycleRoofColor(house_);
+        }
       }
     }
     render();
@@ -95,7 +101,7 @@ void Application::render() {
 
   frame_desc_.draws.clear();
 
-  frame_desc_.draws.push_back({});
+  demo::buildHouse(frame_desc_, house_);
 
   renderer_.render(*frame, frame_desc_);
   frame_ring_.endFrame(*frame, swapchain_);
