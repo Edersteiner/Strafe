@@ -73,16 +73,6 @@ VkShaderModule createShaderModule(VkDevice device, const std::string &file_name,
   return shader_module;
 }
 
-struct Vertex {
-  glm::vec3 position;
-  glm::vec3 color;
-};
-
-static_assert(sizeof(Vertex) == 24);
-static_assert(offsetof(Vertex, position) == 0);
-static_assert(offsetof(Vertex, color) == 12);
-static_assert(std::is_trivially_copyable_v<Vertex>);
-
 struct PushConstants {
   glm::mat4 transform = glm::mat4(1.0f);
   VkDeviceAddress vertex_buffer = 0;
