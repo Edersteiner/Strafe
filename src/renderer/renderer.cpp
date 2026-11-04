@@ -6,6 +6,7 @@
 #include "gfx/device.h"
 #include "gfx/framering.h"
 #include "gfx/swapchain.h"
+#include "gfx/vk_check.h"
 
 #include "vulkan/vulkan_core.h"
 #include <cstddef>
@@ -65,9 +66,8 @@ VkShaderModule createShaderModule(VkDevice device, const std::string &file_name,
       .pCode = result.cbegin()};
 
   VkShaderModule shader_module = VK_NULL_HANDLE;
-  if (vkCreateShaderModule(device, &module_create_info, nullptr,
-                           &shader_module) != VK_SUCCESS) {
-    log::error("Error creating shader module");
+  if (!VK_CHECK(vkCreateShaderModule(device, &module_create_info, nullptr,
+                                     &shader_module))) {
     return nullptr;
   }
   return shader_module;
@@ -197,10 +197,9 @@ bool Renderer::createDepthBuffer(VkExtent2D extent) {
   VmaAllocationCreateInfo alloc_info{
       .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
       .usage = VMA_MEMORY_USAGE_AUTO};
-  if (vmaCreateImage(device_->allocator(), &depth_create_info, &alloc_info,
-                     &depth_image_, &depth_image_allocation_,
-                     nullptr) != VK_SUCCESS) {
-    log::error("Error allocating depth image");
+  if (!VK_CHECK(vmaCreateImage(device_->allocator(), &depth_create_info,
+                               &alloc_info, &depth_image_,
+                               &depth_image_allocation_, nullptr))) {
     return false;
   }
 
@@ -212,9 +211,9 @@ bool Renderer::createDepthBuffer(VkExtent2D extent) {
       .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                         .levelCount = 1,
                         .layerCount = 1}};
-  if (vkCreateImageView(device_->logicalDevice(), &depth_img_view_info, nullptr,
-                        &depth_image_view_) != VK_SUCCESS) {
-    log::error("Error creating depth image view");
+  if (!VK_CHECK(vkCreateImageView(device_->logicalDevice(),
+                                  &depth_img_view_info, nullptr,
+                                  &depth_image_view_))) {
     return false;
   }
 
@@ -275,9 +274,9 @@ VkPipeline Renderer::createGraphicsPipeline() {
       .setLayoutCount = 0,
       .pushConstantRangeCount = 1,
       .pPushConstantRanges = &push_constant_range};
-  if (vkCreatePipelineLayout(device_->logicalDevice(), &pipeline_layout_info,
-                             nullptr, &pipeline_layout_) != VK_SUCCESS) {
-    log::error("Failed to create pipeline layout");
+  if (!VK_CHECK(vkCreatePipelineLayout(device_->logicalDevice(),
+                                       &pipeline_layout_info, nullptr,
+                                       &pipeline_layout_))) {
     return nullptr;
   }
 
@@ -373,10 +372,9 @@ VkPipeline Renderer::createGraphicsPipeline() {
   };
 
   VkPipeline new_pipeline = VK_NULL_HANDLE;
-  if (vkCreateGraphicsPipelines(device_->logicalDevice(), nullptr, 1,
-                                &pipeline_info, nullptr,
-                                &new_pipeline) != VK_SUCCESS) {
-    log::error("Error creating the pipeline");
+  if (!VK_CHECK(vkCreateGraphicsPipelines(device_->logicalDevice(), nullptr, 1,
+                                          &pipeline_info, nullptr,
+                                          &new_pipeline))) {
     return nullptr;
   }
 

@@ -4,6 +4,7 @@
 #include <optional>
 
 #include "core/log.h"
+#include "gfx/vk_check.h"
 
 namespace strafe {
 
@@ -102,7 +103,7 @@ void Application::render() {
 
 void Application::shutdown() {
   if (device_.logicalDevice()) {
-    vkDeviceWaitIdle(device_.logicalDevice());
+    VK_CHECK(vkDeviceWaitIdle(device_.logicalDevice()));
   }
 
   // The renderer defers destruction into the ring, so it shuts down first.

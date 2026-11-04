@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "gfx/device.h"
+#include "gfx/vk_check.h"
 
 #include <cassert>
 
@@ -26,11 +27,9 @@ std::optional<Buffer> createBuffer(Device &device, VkDeviceSize size,
   };
 
   Buffer new_buffer{};
-  VkResult result =
-      vmaCreateBuffer(device.allocator(), &buffer_info, &alloc_info,
-                      &new_buffer.handle, &new_buffer.allocation, nullptr);
-  if (result != VK_SUCCESS) {
-    log::error("Failed to create buffer");
+  if (!VK_CHECK(vmaCreateBuffer(device.allocator(), &buffer_info, &alloc_info,
+                                &new_buffer.handle, &new_buffer.allocation,
+                                nullptr))) {
     return std::nullopt;
   }
 
@@ -60,15 +59,8 @@ bool writeBuffer(Device &device, const Buffer &buffer,
     return false;
   }
 
-  VkResult result = vmaCopyMemoryToAllocation(
-      device.allocator(), data.data(), buffer.allocation, offset, data.size());
-
-  if (result != VK_SUCCESS) {
-    log::error("Failed to write to buffer");
-    return false;
-  }
-
-  return true;
+  return VK_CHECK(vmaCopyMemoryToAllocation(
+      device.allocator(), data.data(), buffer.allocation, offset, data.size()));
 }
 
 void destroyBuffer(Device &device, const Buffer &buffer) {

@@ -2,6 +2,7 @@
 
 #include "core/flags.h"
 #include "core/log.h"
+#include "gfx/vk_check.h"
 
 #include <SDL3/SDL_vulkan.h>
 #include <vector>
@@ -46,9 +47,13 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
 // Helpers to find layers and extensions.
 bool hasInstanceLayer(const char *name) {
   uint32_t count = 0;
-  vkEnumerateInstanceLayerProperties(&count, nullptr);
+  if (!VK_CHECK(vkEnumerateInstanceLayerProperties(&count, nullptr))) {
+    return false;
+  }
   std::vector<VkLayerProperties> layers(count);
-  vkEnumerateInstanceLayerProperties(&count, layers.data());
+  if (!VK_CHECK(vkEnumerateInstanceLayerProperties(&count, layers.data()))) {
+    return false;
+  }
 
   for (VkLayerProperties &layer : layers) {
     if (strcmp(layer.layerName, name) == 0) {
@@ -61,9 +66,15 @@ bool hasInstanceLayer(const char *name) {
 
 bool hasInstanceExtension(const char *name) {
   uint32_t count = 0;
-  vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+  if (!VK_CHECK(
+          vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr))) {
+    return false;
+  }
   std::vector<VkExtensionProperties> extensions(count);
-  vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+  if (!VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &count,
+                                                       extensions.data()))) {
+    return false;
+  }
 
   for (VkExtensionProperties &extension : extensions) {
     if (strcmp(extension.extensionName, name) == 0) {
@@ -144,16 +155,14 @@ bool Device::initializeVMA() {
 
   vmaImportVulkanFunctionsFromVolk(&vma_alloc_info, &vma_func_info);
 
-  if (vmaCreateAllocator(&vma_alloc_info, &vma_allocator_) != VK_SUCCESS) {
-    log::error("vmaCreateAllocator failed");
+  if (!VK_CHECK(vmaCreateAllocator(&vma_alloc_info, &vma_allocator_))) {
     return false;
   }
   return true;
 }
 
 bool Device::createVulkanInstance() {
-  if (volkInitialize() != VK_SUCCESS) {
-    log::error("Error initializing Volk");
+  if (!VK_CHECK(volkInitialize())) {
     return false;
   }
 
@@ -213,16 +222,15 @@ bool Device::createVulkanInstance() {
     inst_create_info.pNext = &debug_info;
   }
 
-  if (vkCreateInstance(&inst_create_info, nullptr, &instance_) != VK_SUCCESS) {
+  if (!VK_CHECK(vkCreateInstance(&inst_create_info, nullptr, &instance_))) {
     return false;
   }
 
   volkLoadInstance(instance_);
 
   if (use_debug_utils &&
-      vkCreateDebugUtilsMessengerEXT(instance_, &debug_info, nullptr,
-                                     &debug_messenger_) != VK_SUCCESS) {
-    log::error("Failed to create debug messenger");
+      !VK_CHECK(vkCreateDebugUtilsMessengerEXT(instance_, &debug_info, nullptr,
+                                               &debug_messenger_))) {
     return false;
   }
 
@@ -243,9 +251,15 @@ bool Device::createSurface(SDL_Window *window) {
 
 bool Device::findPhysicalDevice(VkFormat requested_swapchain_format) {
   uint32_t phys_device_count = 0;
-  vkEnumeratePhysicalDevices(instance_, &phys_device_count, nullptr);
+  if (!VK_CHECK(
+          vkEnumeratePhysicalDevices(instance_, &phys_device_count, nullptr))) {
+    return false;
+  }
   std::vector<VkPhysicalDevice> devices(phys_device_count);
-  vkEnumeratePhysicalDevices(instance_, &phys_device_count, devices.data());
+  if (!VK_CHECK(vkEnumeratePhysicalDevices(instance_, &phys_device_count,
+                                           devices.data()))) {
+    return false;
+  }
 
   VkPhysicalDevice physical_device = nullptr;
   if (phys_device_count) {
@@ -266,11 +280,15 @@ bool Device::findPhysicalDevice(VkFormat requested_swapchain_format) {
 
   // Ensure that picked device supports swapchain_format_
   uint32_t fmt_count = 0;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count,
-                                       nullptr);
+  if (!VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_,
+                                                     &fmt_count, nullptr))) {
+    return false;
+  }
   std::vector<VkSurfaceFormatKHR> surface_formats(fmt_count);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface_, &fmt_count,
-                                       surface_formats.data());
+  if (!VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(
+          physical_device, surface_, &fmt_count, surface_formats.data()))) {
+    return false;
+  }
 
   bool format_supported = false;
   for (const VkSurfaceFormatKHR &surface_format : surface_formats) {
@@ -301,8 +319,11 @@ bool Device::findGraphicsQueue() {
        current_fam_idx++) {
     // Ensure queue
     VkBool32 has_present_support = VK_FALSE;
-    vkGetPhysicalDeviceSurfaceSupportKHR(physical_device_, current_fam_idx,
-                                         surface_, &has_present_support);
+    if (!VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(
+            physical_device_, current_fam_idx, surface_,
+            &has_present_support))) {
+      continue;
+    }
 
     const auto &props = queue_fam_props[current_fam_idx];
     if (props.queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT &&
@@ -380,15 +401,15 @@ bool Device::createLogicalDevice() {
       .ppEnabledExtensionNames = device_extensions.data(),
       .pEnabledFeatures = nullptr};
 
-  if (vkCreateDevice(physical_device_, &dev_create_info, nullptr,
-                     &logical_device_) != VK_SUCCESS) {
+  if (!VK_CHECK(vkCreateDevice(physical_device_, &dev_create_info, nullptr,
+                               &logical_device_))) {
     return false;
   }
 
   vkGetDeviceQueue(logical_device_, graphics_queue_family_idx_, 0,
                    &graphics_queue_);
   if (!graphics_queue_) {
-    log::info("Failed to get graphics queue from device");
+    log::error("Failed to get graphics queue from device");
     return false;
   }
   return true;

@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "gfx/device.h"
 #include "gfx/swapchain.h"
+#include "gfx/vk_check.h"
 
 namespace strafe::gfx {
 
@@ -61,15 +62,22 @@ std::optional<FrameContext> FrameRing::beginFrame(Swapchain &swapchain) {
                                 .semaphoreCount = 1,
                                 .pSemaphores = &timeline_semaphore_,
                                 .pValues = &wait_value};
-  vkWaitSemaphores(device_->logicalDevice(), &wait_info, UINT64_MAX);
+  if (!VK_CHECK(
+          vkWaitSemaphores(device_->logicalDevice(), &wait_info, UINT64_MAX))) {
+    return std::nullopt;
+  }
 
   uint64_t current_value = 0;
-  vkGetSemaphoreCounterValue(device_->logicalDevice(), timeline_semaphore_,
-                             &current_value);
-  deletion_queue_.flush(current_value);
+  if (VK_CHECK(vkGetSemaphoreCounterValue(
+          device_->logicalDevice(), timeline_semaphore_, &current_value))) {
+    deletion_queue_.flush(current_value);
+  }
 
   FrameResources &res = frame_resources_[slot];
-  vkResetCommandPool(device_->logicalDevice(), res.command_pool, 0);
+  if (!VK_CHECK(
+          vkResetCommandPool(device_->logicalDevice(), res.command_pool, 0))) {
+    return std::nullopt;
+  }
 
   VkSemaphore image_acquire_semaphore = res.image_acquired_semaphore;
 
@@ -81,8 +89,11 @@ std::optional<FrameContext> FrameRing::beginFrame(Swapchain &swapchain) {
   if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
     swapchain.markForRecreate();
     return std::nullopt;
-  } else if (acquire_result == VK_SUBOPTIMAL_KHR) {
+  }
+  if (acquire_result == VK_SUBOPTIMAL_KHR) {
     swapchain.markForRecreate();
+  } else if (!VK_CHECK(acquire_result)) {
+    return std::nullopt;
   }
 
   ++frame_index_;
@@ -92,7 +103,7 @@ std::optional<FrameContext> FrameRing::beginFrame(Swapchain &swapchain) {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
 
-  vkBeginCommandBuffer(res.command_buffer, &cmd_begin_info);
+  VK_CHECK(vkBeginCommandBuffer(res.command_buffer, &cmd_begin_info));
 
   return FrameContext{
       .cmd = res.command_buffer,
@@ -110,18 +121,17 @@ bool FrameRing::createSyncResources() {
   VkSemaphoreCreateInfo timeline_semaphore_info{
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
       .pNext = &semaphore_type_info};
-  if (vkCreateSemaphore(device_->logicalDevice(), &timeline_semaphore_info,
-                        nullptr, &timeline_semaphore_) != VK_SUCCESS) {
-    log::error("Failed to create timeline semaphore");
+  if (!VK_CHECK(vkCreateSemaphore(device_->logicalDevice(),
+                                  &timeline_semaphore_info, nullptr,
+                                  &timeline_semaphore_))) {
     return false;
   }
 
   for (FrameResources &res : frame_resources_) {
     VkSemaphoreCreateInfo semaphore_info{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    if (vkCreateSemaphore(device_->logicalDevice(), &semaphore_info, nullptr,
-                          &res.image_acquired_semaphore) != VK_SUCCESS) {
-      log::error("Error creating the per-frame image-acquire semaphore");
+    if (!VK_CHECK(vkCreateSemaphore(device_->logicalDevice(), &semaphore_info,
+                                    nullptr, &res.image_acquired_semaphore))) {
       return false;
     }
   }
@@ -130,7 +140,7 @@ bool FrameRing::createSyncResources() {
 }
 
 void FrameRing::endFrame(const FrameContext &ctx, Swapchain &swapchain) {
-  vkEndCommandBuffer(ctx.cmd);
+  VK_CHECK(vkEndCommandBuffer(ctx.cmd));
 
   FrameResources &res = frame_resources_[ctx.frame_slot];
 
@@ -162,7 +172,8 @@ void FrameRing::endFrame(const FrameContext &ctx, Swapchain &swapchain) {
                             .signalSemaphoreInfoCount =
                                 static_cast<uint32_t>(semaphore_signals.size()),
                             .pSignalSemaphoreInfos = semaphore_signals.data()};
-  vkQueueSubmit2(device_->graphicsQueue(), 1, &submit_info, VK_NULL_HANDLE);
+  VK_CHECK(vkQueueSubmit2(device_->graphicsQueue(), 1, &submit_info,
+                          VK_NULL_HANDLE));
 
   const VkSemaphore present_semaphor =
       swapchain.presentSemaphore(ctx.image_index);
@@ -176,7 +187,14 @@ void FrameRing::endFrame(const FrameContext &ctx, Swapchain &swapchain) {
                                 .pImageIndices = &ctx.image_index,
                                 .pResults = nullptr};
 
-  vkQueuePresentKHR(device_->graphicsQueue(), &present_info);
+  const VkResult present_result =
+      vkQueuePresentKHR(device_->graphicsQueue(), &present_info);
+  if (present_result == VK_ERROR_OUT_OF_DATE_KHR ||
+      present_result == VK_SUBOPTIMAL_KHR) {
+    swapchain.markForRecreate();
+  } else {
+    VK_CHECK(present_result);
+  }
 }
 
 bool FrameRing::createCommandBuffers() {
@@ -184,9 +202,8 @@ bool FrameRing::createCommandBuffers() {
     VkCommandPoolCreateInfo pool_info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .queueFamilyIndex = device_->graphicsQueueFamily()};
-    if (vkCreateCommandPool(device_->logicalDevice(), &pool_info, nullptr,
-                            &res.command_pool) != VK_SUCCESS) {
-      log::error("Unable to create command buffer pool");
+    if (!VK_CHECK(vkCreateCommandPool(device_->logicalDevice(), &pool_info,
+                                      nullptr, &res.command_pool))) {
       return false;
     }
 
@@ -197,9 +214,8 @@ bool FrameRing::createCommandBuffers() {
         .commandBufferCount = 1,
     };
 
-    if (vkAllocateCommandBuffers(device_->logicalDevice(), &cmd_alloc_info,
-                                 &res.command_buffer) != VK_SUCCESS) {
-      log::error("Unable to allocate command buffer");
+    if (!VK_CHECK(vkAllocateCommandBuffers(
+            device_->logicalDevice(), &cmd_alloc_info, &res.command_buffer))) {
       return false;
     }
   }

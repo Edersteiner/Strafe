@@ -1,7 +1,7 @@
 #include "gfx/swapchain.h"
 
-#include "core/log.h"
 #include "gfx/device.h"
+#include "gfx/vk_check.h"
 
 #include <algorithm>
 
@@ -47,7 +47,7 @@ void Swapchain::shutdown() {
 }
 
 bool Swapchain::recreate(VkExtent2D desired) {
-  vkDeviceWaitIdle(device_->logicalDevice());
+  VK_CHECK(vkDeviceWaitIdle(device_->logicalDevice()));
 
   VkSwapchainKHR old_swapchain = swapchain_handle_;
   swapchain_handle_ = VK_NULL_HANDLE;
@@ -68,10 +68,8 @@ bool Swapchain::recreate(VkExtent2D desired) {
 bool Swapchain::createSwapchain(VkExtent2D desired,
                                 VkSwapchainKHR old_swapchain) {
   VkSurfaceCapabilitiesKHR surface_caps{};
-  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_->physicalDevice(),
-                                                device_->surface(),
-                                                &surface_caps) != VK_SUCCESS) {
-    log::info("Couldn't get the surface capabilities from physical device");
+  if (!VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+          device_->physicalDevice(), device_->surface(), &surface_caps))) {
     return false;
   }
 
@@ -107,18 +105,25 @@ bool Swapchain::createSwapchain(VkExtent2D desired,
       .presentMode = VK_PRESENT_MODE_FIFO_KHR,
       .oldSwapchain = old_swapchain};
 
-  if (vkCreateSwapchainKHR(device_->logicalDevice(), &swapchain_create_info,
-                           nullptr, &swapchain_handle_) != VK_SUCCESS) {
+  if (!VK_CHECK(vkCreateSwapchainKHR(device_->logicalDevice(),
+                                     &swapchain_create_info, nullptr,
+                                     &swapchain_handle_))) {
     return false;
   }
 
   // Get swapchain images
   uint32_t image_count = 0;
-  vkGetSwapchainImagesKHR(device_->logicalDevice(), swapchain_handle_,
-                          &image_count, nullptr);
+  if (!VK_CHECK(vkGetSwapchainImagesKHR(device_->logicalDevice(),
+                                        swapchain_handle_, &image_count,
+                                        nullptr))) {
+    return false;
+  }
   swapchain_images_.resize(image_count);
-  vkGetSwapchainImagesKHR(device_->logicalDevice(), swapchain_handle_,
-                          &image_count, swapchain_images_.data());
+  if (!VK_CHECK(vkGetSwapchainImagesKHR(device_->logicalDevice(),
+                                        swapchain_handle_, &image_count,
+                                        swapchain_images_.data()))) {
+    return false;
+  }
   swapchain_image_views_.resize(image_count);
 
   for (size_t i = 0; i < swapchain_images_.size(); ++i) {
@@ -133,9 +138,8 @@ bool Swapchain::createSwapchain(VkExtent2D desired,
                           .baseArrayLayer = 0,
                           .layerCount = 1}};
 
-    if (vkCreateImageView(device_->logicalDevice(), &img_view_info, nullptr,
-                          &swapchain_image_views_[i]) != VK_SUCCESS) {
-      log::error("Error creating swapchain image view");
+    if (!VK_CHECK(vkCreateImageView(device_->logicalDevice(), &img_view_info,
+                                    nullptr, &swapchain_image_views_[i]))) {
       return false;
     }
   }
@@ -145,9 +149,8 @@ bool Swapchain::createSwapchain(VkExtent2D desired,
   for (VkSemaphore &semaphore : render_complete_semaphores_) {
     VkSemaphoreCreateInfo semaphore_info{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    if (vkCreateSemaphore(device_->logicalDevice(), &semaphore_info, nullptr,
-                          &semaphore) != VK_SUCCESS) {
-      log::error("Error creating the render-complete semaphore");
+    if (!VK_CHECK(vkCreateSemaphore(device_->logicalDevice(), &semaphore_info,
+                                    nullptr, &semaphore))) {
       return false;
     }
   }
