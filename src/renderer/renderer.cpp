@@ -2,16 +2,24 @@
 
 #include "core/log.h"
 #include "core/utils.h"
+#include "gfx/buffer.h"
 #include "gfx/device.h"
 #include "gfx/framering.h"
 #include "gfx/swapchain.h"
+#include "gfx/vk_check.h"
 
+#include "vulkan/vulkan_core.h"
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 // Todo: replace shaderc and glsl with Slang.
 #include <shaderc/shaderc.hpp>
+
+#include <glm/glm.hpp>
 
 // This currently hardcodes pipelines and drawing
 // but this will eventually serve as the orchestrator
@@ -58,13 +66,42 @@ VkShaderModule createShaderModule(VkDevice device, const std::string &file_name,
       .pCode = result.cbegin()};
 
   VkShaderModule shader_module = VK_NULL_HANDLE;
-  if (vkCreateShaderModule(device, &module_create_info, nullptr,
-                           &shader_module) != VK_SUCCESS) {
-    log::error("Error creating shader module");
+  if (!VK_CHECK(vkCreateShaderModule(device, &module_create_info, nullptr,
+                                     &shader_module))) {
     return nullptr;
   }
   return shader_module;
 }
+
+struct Vertex {
+  glm::vec3 position;
+  glm::vec3 color;
+};
+
+static_assert(sizeof(Vertex) == 24);
+static_assert(offsetof(Vertex, position) == 0);
+static_assert(offsetof(Vertex, color) == 12);
+static_assert(std::is_trivially_copyable_v<Vertex>);
+
+struct PushConstants {
+  glm::mat4 transform = glm::mat4(1.0f);
+  VkDeviceAddress vertex_buffer = 0;
+  glm::vec4 color = glm::vec4(1.0f);
+};
+
+static_assert(sizeof(PushConstants) == 88);
+static_assert(offsetof(PushConstants, transform) == 0);
+static_assert(offsetof(PushConstants, vertex_buffer) == 64);
+static_assert(offsetof(PushConstants, color) == 72);
+
+constexpr std::array<Vertex, 3> kTriangleVerts{
+    Vertex{.position = {-0.5f, -0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}},
+    Vertex{.position = {-0.5f, 0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}},
+    Vertex{.position = {0.5f, 0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}}};
+
+constexpr VkShaderStageFlags kPushConstantStages =
+    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
 } // namespace
 
 bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
@@ -81,6 +118,10 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
   }
   if (!createShaders()) {
     log::error("Failed to create shaders");
+    return false;
+  }
+  if (!createVertexBuffer()) {
+    log::error("Failed to create vertex buffer");
     return false;
   }
   if (pipeline_ = createGraphicsPipeline(); !pipeline_) {
@@ -107,6 +148,13 @@ void Renderer::shutdown() {
       vkDestroyPipeline(device, handle, nullptr);
     });
     pipeline_ = VK_NULL_HANDLE;
+  }
+
+  if (vertex_buffer_.handle) {
+    frame_ring_->deferDestroy([device = device_, buffer = vertex_buffer_] {
+      gfx::destroyBuffer(*device, buffer);
+    });
+    vertex_buffer_ = {};
   }
 
   if (vert_shader_) {
@@ -149,10 +197,9 @@ bool Renderer::createDepthBuffer(VkExtent2D extent) {
   VmaAllocationCreateInfo alloc_info{
       .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
       .usage = VMA_MEMORY_USAGE_AUTO};
-  if (vmaCreateImage(device_->allocator(), &depth_create_info, &alloc_info,
-                     &depth_image_, &depth_image_allocation_,
-                     nullptr) != VK_SUCCESS) {
-    log::error("Error allocating depth image");
+  if (!VK_CHECK(vmaCreateImage(device_->allocator(), &depth_create_info,
+                               &alloc_info, &depth_image_,
+                               &depth_image_allocation_, nullptr))) {
     return false;
   }
 
@@ -164,9 +211,9 @@ bool Renderer::createDepthBuffer(VkExtent2D extent) {
       .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                         .levelCount = 1,
                         .layerCount = 1}};
-  if (vkCreateImageView(device_->logicalDevice(), &depth_img_view_info, nullptr,
-                        &depth_image_view_) != VK_SUCCESS) {
-    log::error("Error creating depth image view");
+  if (!VK_CHECK(vkCreateImageView(device_->logicalDevice(),
+                                  &depth_img_view_info, nullptr,
+                                  &depth_image_view_))) {
     return false;
   }
 
@@ -201,14 +248,35 @@ bool Renderer::createShaders() {
   return true;
 }
 
+bool Renderer::createVertexBuffer() {
+  const std::span<const std::byte> bytes =
+      std::as_bytes(std::span(kTriangleVerts));
+
+  auto new_buffer = gfx::createBuffer(*device_, bytes.size(), 0);
+
+  if (!new_buffer) {
+    log::error("Failed to create vertex buffer");
+    return false;
+  }
+
+  vertex_buffer_ = *new_buffer;
+
+  return gfx::writeBuffer(*device_, vertex_buffer_, bytes);
+}
+
 VkPipeline Renderer::createGraphicsPipeline() {
+  VkPushConstantRange push_constant_range{.stageFlags = kPushConstantStages,
+                                          .offset = 0,
+                                          .size = sizeof(PushConstants)};
+
   VkPipelineLayoutCreateInfo pipeline_layout_info{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount = 0,
-      .pushConstantRangeCount = 0};
-  if (vkCreatePipelineLayout(device_->logicalDevice(), &pipeline_layout_info,
-                             nullptr, &pipeline_layout_) != VK_SUCCESS) {
-    log::error("Failed to create pipeline layout");
+      .pushConstantRangeCount = 1,
+      .pPushConstantRanges = &push_constant_range};
+  if (!VK_CHECK(vkCreatePipelineLayout(device_->logicalDevice(),
+                                       &pipeline_layout_info, nullptr,
+                                       &pipeline_layout_))) {
     return nullptr;
   }
 
@@ -238,7 +306,7 @@ VkPipeline Renderer::createGraphicsPipeline() {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
       .depthTestEnable = VK_TRUE,
       .depthWriteEnable = VK_TRUE,
-      .depthCompareOp = VK_COMPARE_OP_LESS,
+      .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
       .stencilTestEnable = VK_FALSE};
 
   VkPipelineViewportStateCreateInfo viewport_info{
@@ -304,18 +372,16 @@ VkPipeline Renderer::createGraphicsPipeline() {
   };
 
   VkPipeline new_pipeline = VK_NULL_HANDLE;
-  if (vkCreateGraphicsPipelines(device_->logicalDevice(), nullptr, 1,
-                                &pipeline_info, nullptr,
-                                &new_pipeline) != VK_SUCCESS) {
-    log::error("Error creating the pipeline");
+  if (!VK_CHECK(vkCreateGraphicsPipelines(device_->logicalDevice(), nullptr, 1,
+                                          &pipeline_info, nullptr,
+                                          &new_pipeline))) {
     return nullptr;
   }
 
   return new_pipeline;
 }
 
-void Renderer::render(const gfx::FrameContext &ctx,
-                      const FrameDesc & /*desc*/) {
+void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   const VkExtent2D extent = swapchain_->extent();
 
   // Transition the color and depth images
@@ -400,7 +466,15 @@ void Renderer::render(const gfx::FrameContext &ctx,
     vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
-    vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
+
+    for (const auto &draw : desc.draws) {
+      const PushConstants push{.transform = draw.transform,
+                               .vertex_buffer = vertex_buffer_.address,
+                               .color = draw.color};
+      vkCmdPushConstants(ctx.cmd, pipeline_layout_, kPushConstantStages, 0,
+                         sizeof(push), &push);
+      vkCmdDraw(ctx.cmd, static_cast<uint32_t>(kTriangleVerts.size()), 1, 0, 0);
+    }
   }
   // End dynamic rendering
   vkCmdEndRendering(ctx.cmd);

@@ -3,7 +3,11 @@
 #include "gfx/device.h"
 #include "gfx/framering.h"
 #include "gfx/swapchain.h"
+#include "renderer/frame_desc.h"
 #include "renderer/renderer.h"
+
+// Week 1 Demo
+#include "demo/week1_house.h"
 
 #include <SDL3/SDL.h>
 
@@ -30,5 +34,9 @@ private:
   gfx::FrameRing frame_ring_;
 
   renderer::Renderer renderer_;
+  renderer::FrameDesc frame_desc_;
+
+  // Week 1 Demo
+  demo::House house_;
 };
 } // namespace strafe

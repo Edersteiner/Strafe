@@ -1,9 +1,12 @@
 #include "core/application.h"
 
+#include "SDL3/SDL_events.h"
+#include "demo/week1_house.h"
 #include <cstdint>
 #include <optional>
 
 #include "core/log.h"
+#include "gfx/vk_check.h"
 
 namespace strafe {
 
@@ -64,6 +67,10 @@ void Application::run() {
       } else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
         SDL_GetWindowSizeInPixels(window_, &width_, &height_);
         swapchain_.markForRecreate();
+      } else if (event.type == SDL_EVENT_KEY_DOWN) {
+        if (event.key.key == SDLK_SPACE && !event.key.repeat) {
+          demo::cycleRoofColor(house_);
+        }
       }
     }
     render();
@@ -92,13 +99,17 @@ void Application::render() {
     return;
   }
 
-  renderer_.render(*frame, renderer::FrameDesc{});
+  frame_desc_.draws.clear();
+
+  demo::buildHouse(frame_desc_, house_);
+
+  renderer_.render(*frame, frame_desc_);
   frame_ring_.endFrame(*frame, swapchain_);
 }
 
 void Application::shutdown() {
   if (device_.logicalDevice()) {
-    vkDeviceWaitIdle(device_.logicalDevice());
+    VK_CHECK(vkDeviceWaitIdle(device_.logicalDevice()));
   }
 
   // The renderer defers destruction into the ring, so it shuts down first.

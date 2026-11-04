@@ -1,23 +1,27 @@
 #version 460
 
-// Triangle vertices hardcoded in shader for now
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
 
-const vec3 positions[3] = vec3[](
-  vec3( 0.0, -0.5, 0.0), // Top
-  vec3(-0.5,  0.5, 0.0), // Bottom Left
-  vec3( 0.5,  0.5, 0.0)  // Bottom Right
-);
+struct Vertex {
+  vec3 position;
+  vec3 color;
+};
 
-const vec3 colors[3] = vec3[]
-(
-  vec3(1.0, 0.0, 0.0), // Red
-  vec3(0.0, 1.0, 0.0), // Green
-  vec3(0.0, 0.0, 1.0)  // Blue
-);
+layout(buffer_reference, scalar) readonly buffer VertexBuffer {
+  Vertex vertices[];
+};
 
-layout (location = 0) out vec3 outColor;
+layout(push_constant, scalar) uniform PushConstants {
+  mat4 transform;
+  VertexBuffer vertex_buffer;
+  vec4 color;
+} pc;
+
+layout(location = 0) out vec3 outColor;
 
 void main() {
-  gl_Position = vec4(positions[gl_VertexIndex], 1.0);
-  outColor = colors[gl_VertexIndex];
+  Vertex vertex = pc.vertex_buffer.vertices[gl_VertexIndex];
+  gl_Position = pc.transform * vec4(vertex.position, 1.0);
+  outColor = vertex.color * pc.color.rgb;
 }
