@@ -1,10 +1,15 @@
 #pragma once
 
-#include "gfx/buffer.h"
 #include "renderer/frame_desc.h"
+#include "renderer/mesh.h"
 
 #include <volk.h>
 #include <vk_mem_alloc.h>
+
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <vector>
 
 namespace strafe::gfx {
 class Device;
@@ -34,6 +39,10 @@ public:
   // Swapchain::recreate guarantees that.
   bool resize(VkExtent2D extent);
 
+  // Uploads the mesh once. The returned id stays valid until shutdown.
+  std::optional<MeshId> createMesh(std::span<const Vertex> vertices,
+                                   std::span<const uint32_t> indices);
+
   void render(const gfx::FrameContext &ctx, const FrameDesc &desc);
 
 private:
@@ -42,8 +51,8 @@ private:
   bool createDepthBuffer(VkExtent2D extent);
   void destroyDepthBuffer();
   bool createShaders();
-  bool createVertexBuffer();
   VkPipeline createGraphicsPipeline();
+  void deferDestroyMesh(const Mesh &mesh);
 
   gfx::Device *device_ = nullptr;
   gfx::Swapchain *swapchain_ = nullptr;
@@ -59,7 +68,7 @@ private:
   VkPipeline pipeline_ = VK_NULL_HANDLE;
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 
-  gfx::Buffer vertex_buffer_;
+  std::vector<Mesh> meshes_;
 };
 
 } // namespace strafe::renderer

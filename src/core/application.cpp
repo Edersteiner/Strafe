@@ -26,6 +26,10 @@ bool Application::initialize() {
       log::error("Failed to initialize Vulkan");
       return false;
     }
+    if (!demo::createHouseMesh(renderer_, house_)) {
+      log::error("Failed to create the house mesh");
+      return false;
+    }
   } else {
     log::error("Failed to initialise SDL Subsystems: {}", SDL_GetError());
     return false;

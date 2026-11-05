@@ -9,6 +9,7 @@
 #include "gfx/vk_check.h"
 
 #include "vulkan/vulkan_core.h"
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -84,11 +85,6 @@ static_assert(offsetof(PushConstants, transform) == 0);
 static_assert(offsetof(PushConstants, vertex_buffer) == 64);
 static_assert(offsetof(PushConstants, color) == 72);
 
-constexpr std::array<Vertex, 3> kTriangleVerts{
-    Vertex{.position = {-0.5f, -0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}},
-    Vertex{.position = {-0.5f, 0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}},
-    Vertex{.position = {0.5f, 0.5f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}}};
-
 constexpr VkShaderStageFlags kPushConstantStages =
     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
@@ -108,10 +104,6 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
   }
   if (!createShaders()) {
     log::error("Failed to create shaders");
-    return false;
-  }
-  if (!createVertexBuffer()) {
-    log::error("Failed to create vertex buffer");
     return false;
   }
   if (pipeline_ = createGraphicsPipeline(); !pipeline_) {
@@ -140,12 +132,10 @@ void Renderer::shutdown() {
     pipeline_ = VK_NULL_HANDLE;
   }
 
-  if (vertex_buffer_.handle) {
-    frame_ring_->deferDestroy([device = device_, buffer = vertex_buffer_] {
-      gfx::destroyBuffer(*device, buffer);
-    });
-    vertex_buffer_ = {};
+  for (const Mesh &mesh : meshes_) {
+    deferDestroyMesh(mesh);
   }
+  meshes_.clear();
 
   if (vert_shader_) {
     frame_ring_->deferDestroy([device, handle = vert_shader_] {
@@ -238,20 +228,57 @@ bool Renderer::createShaders() {
   return true;
 }
 
-bool Renderer::createVertexBuffer() {
-  const std::span<const std::byte> bytes =
-      std::as_bytes(std::span(kTriangleVerts));
-
-  auto new_buffer = gfx::createBuffer(*device_, bytes.size(), 0);
-
-  if (!new_buffer) {
-    log::error("Failed to create vertex buffer");
-    return false;
+std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices,
+                                           std::span<const uint32_t> indices) {
+  if (vertices.empty() || indices.empty()) {
+    log::error("A mesh needs at least one vertex and one index");
+    return std::nullopt;
+  }
+  // Vertex pulling reads through a raw address without bounds checking, so an
+  // out of range index would read past the end of the vertex buffer.
+  for (const uint32_t index : indices) {
+    if (index >= vertices.size()) {
+      log::error("Mesh index {} is out of range for {} vertices", index,
+                 vertices.size());
+      return std::nullopt;
+    }
   }
 
-  vertex_buffer_ = *new_buffer;
+  const std::span<const std::byte> vertex_bytes = std::as_bytes(vertices);
+  const std::span<const std::byte> index_bytes = std::as_bytes(indices);
 
-  return gfx::writeBuffer(*device_, vertex_buffer_, bytes);
+  // The vertex buffer is only read through its device address, which
+  // createBuffer always adds.
+  const std::optional<gfx::Buffer> vertex_buffer =
+      gfx::createBuffer(*device_, vertex_bytes.size(), 0);
+  const std::optional<gfx::Buffer> index_buffer = gfx::createBuffer(
+      *device_, index_bytes.size(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+
+  Mesh mesh{.index_count = static_cast<uint32_t>(indices.size())};
+  if (vertex_buffer) {
+    mesh.vertex_buffer = *vertex_buffer;
+  }
+  if (index_buffer) {
+    mesh.index_buffer = *index_buffer;
+  }
+
+  if (!vertex_buffer || !index_buffer ||
+      !gfx::writeBuffer(*device_, mesh.vertex_buffer, vertex_bytes) ||
+      !gfx::writeBuffer(*device_, mesh.index_buffer, index_bytes)) {
+    log::error("Failed to create mesh buffers");
+    deferDestroyMesh(mesh);
+    return std::nullopt;
+  }
+
+  meshes_.push_back(mesh);
+  return MeshId{.index = static_cast<uint32_t>(meshes_.size() - 1)};
+}
+
+void Renderer::deferDestroyMesh(const Mesh &mesh) {
+  frame_ring_->deferDestroy([gfx_device = device_, mesh] {
+    gfx::destroyBuffer(*gfx_device, mesh.vertex_buffer);
+    gfx::destroyBuffer(*gfx_device, mesh.index_buffer);
+  });
 }
 
 VkPipeline Renderer::createGraphicsPipeline() {
@@ -457,13 +484,28 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 
-    for (const auto &draw : desc.draws) {
+    // Index buffers are bound per mesh, so consecutive draws of the same mesh
+    // skip the rebind.
+    VkBuffer bound_index_buffer = VK_NULL_HANDLE;
+    for (const DrawItem &draw : desc.draws) {
+      assert(draw.mesh.index < meshes_.size() && "DrawItem has no valid mesh");
+      if (draw.mesh.index >= meshes_.size()) {
+        continue;
+      }
+      const Mesh &mesh = meshes_[draw.mesh.index];
+
+      if (mesh.index_buffer.handle != bound_index_buffer) {
+        vkCmdBindIndexBuffer(ctx.cmd, mesh.index_buffer.handle, 0,
+                             VK_INDEX_TYPE_UINT32);
+        bound_index_buffer = mesh.index_buffer.handle;
+      }
+
       const PushConstants push{.transform = draw.transform,
-                               .vertex_buffer = vertex_buffer_.address,
+                               .vertex_buffer = mesh.vertex_buffer.address,
                                .color = draw.color};
       vkCmdPushConstants(ctx.cmd, pipeline_layout_, kPushConstantStages, 0,
                          sizeof(push), &push);
-      vkCmdDraw(ctx.cmd, static_cast<uint32_t>(kTriangleVerts.size()), 1, 0, 0);
+      vkCmdDrawIndexed(ctx.cmd, mesh.index_count, 1, 0, 0, 0);
     }
   }
   // End dynamic rendering
