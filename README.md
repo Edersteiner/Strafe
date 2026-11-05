@@ -1,7 +1,7 @@
 # Strafe
 A C++ Game Engine, built on Vulkan 1.4.
 
-Made for my game engine specialization course. Right now it simply renders a list of items with one singular buffer while I'm working towards a proper rendering architecture.
+Made for my game engine specialization course. Currently only contains a very simple renderer where you can draw meshes with a hardcoded pipeline and push constants.
 
 ## Requirements
 - [xmake](https://xmake.io)
