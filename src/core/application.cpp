@@ -1,7 +1,7 @@
 #include "core/application.h"
 
 #include "SDL3/SDL_events.h"
-#include "demo/week1_house.h"
+#include "demo/week2_scene.h"
 #include <cstdint>
 #include <optional>
 
@@ -26,8 +26,8 @@ bool Application::initialize() {
       log::error("Failed to initialize Vulkan");
       return false;
     }
-    if (!demo::createHouseMesh(renderer_, house_)) {
-      log::error("Failed to create the house mesh");
+    if (!demo::createSceneMeshes(renderer_, scene_)) {
+      log::error("Failed to create the scene meshes");
       return false;
     }
   } else {
@@ -62,6 +62,7 @@ bool Application::initializeVulkan() {
 
 void Application::run() {
   running_ = true;
+  uint64_t last_ticks_ns = SDL_GetTicksNS();
   while (running_) {
     SDL_Event event{0};
     while (SDL_PollEvent(&event)) {
@@ -71,12 +72,18 @@ void Application::run() {
       } else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
         SDL_GetWindowSizeInPixels(window_, &width_, &height_);
         swapchain_.markForRecreate();
-      } else if (event.type == SDL_EVENT_KEY_DOWN) {
-        if (event.key.key == SDLK_SPACE && !event.key.repeat) {
-          demo::cycleRoofColor(house_);
-        }
+      } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+                 event.key.key == SDLK_P) {
+        demo::toggleProjection(scene_);
       }
     }
+
+    const uint64_t now_ns = SDL_GetTicksNS();
+    const float delta_seconds =
+        static_cast<float>(now_ns - last_ticks_ns) / 1'000'000'000.0f;
+    last_ticks_ns = now_ns;
+    demo::updateScene(scene_, delta_seconds);
+
     render();
   }
 }
@@ -105,7 +112,10 @@ void Application::render() {
 
   frame_desc_.draws.clear();
 
-  demo::buildHouse(frame_desc_, house_);
+  const VkExtent2D extent = swapchain_.extent();
+  const float aspect =
+      static_cast<float>(extent.width) / static_cast<float>(extent.height);
+  demo::buildScene(frame_desc_, scene_, aspect);
 
   renderer_.render(*frame, frame_desc_);
   frame_ring_.endFrame(*frame, swapchain_);

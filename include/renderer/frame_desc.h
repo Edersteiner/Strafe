@@ -14,6 +14,7 @@ struct DrawItem {
 };
 
 struct FrameDesc {
+  glm::mat4 view_projection = glm::mat4(1.0f);
   std::vector<DrawItem> draws;
 };
 

@@ -76,14 +76,16 @@ VkShaderModule createShaderModule(VkDevice device, const std::string &file_name,
 
 struct PushConstants {
   glm::mat4 transform = glm::mat4(1.0f);
+  glm::mat4 view_projection = glm::mat4(1.0f);
   VkDeviceAddress vertex_buffer = 0;
   glm::vec4 color = glm::vec4(1.0f);
 };
 
-static_assert(sizeof(PushConstants) == 88);
+static_assert(sizeof(PushConstants) == 152);
 static_assert(offsetof(PushConstants, transform) == 0);
-static_assert(offsetof(PushConstants, vertex_buffer) == 64);
-static_assert(offsetof(PushConstants, color) == 72);
+static_assert(offsetof(PushConstants, view_projection) == 64);
+static_assert(offsetof(PushConstants, vertex_buffer) == 128);
+static_assert(offsetof(PushConstants, color) == 136);
 
 constexpr VkShaderStageFlags kPushConstantStages =
     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -318,12 +320,12 @@ VkPipeline Renderer::createGraphicsPipeline() {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
 
-  // Depth stencil configuration
+  // Reverse-Z: nearer fragments have greater depth
   VkPipelineDepthStencilStateCreateInfo depth_stencil_info{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
       .depthTestEnable = VK_TRUE,
       .depthWriteEnable = VK_TRUE,
-      .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
+      .depthCompareOp = VK_COMPARE_OP_GREATER,
       .stencilTestEnable = VK_FALSE};
 
   VkPipelineViewportStateCreateInfo viewport_info{
@@ -456,7 +458,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
       .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
       .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-      .clearValue{.depthStencil{.depth = 1.0f, .stencil = 0}}};
+      .clearValue{.depthStencil{.depth = 0.0f, .stencil = 0}}};
 
   VkRenderingInfo rendering_info{
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -501,6 +503,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       }
 
       const PushConstants push{.transform = draw.transform,
+                               .view_projection = desc.view_projection,
                                .vertex_buffer = mesh.vertex_buffer.address,
                                .color = draw.color};
       vkCmdPushConstants(ctx.cmd, pipeline_layout_, kPushConstantStages, 0,
