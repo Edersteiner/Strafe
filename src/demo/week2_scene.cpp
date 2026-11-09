@@ -16,7 +16,7 @@
 namespace strafe::demo {
 
 namespace {
-// Counter-clockwise when seen from +Z in a Y-up world
+
 constexpr std::array kPyramidVertices{
     renderer::Vertex{.position = {-0.5f, -0.5f, 0.5f}, .color = {1, 1, 1}},
     renderer::Vertex{.position = {0.5f, -0.5f, 0.5f}, .color = {1, 1, 1}},

@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "core/utils.h"
 #include "gfx/buffer.h"
+#include "gfx/command_list.h"
 #include "gfx/device.h"
 #include "gfx/framering.h"
 #include "gfx/swapchain.h"
@@ -86,9 +87,6 @@ static_assert(offsetof(PushConstants, transform) == 0);
 static_assert(offsetof(PushConstants, view_projection) == 64);
 static_assert(offsetof(PushConstants, vertex_buffer) == 128);
 static_assert(offsetof(PushConstants, color) == 136);
-
-constexpr VkShaderStageFlags kPushConstantStages =
-    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
 } // namespace
 
@@ -284,7 +282,8 @@ void Renderer::deferDestroyMesh(const Mesh &mesh) {
 }
 
 VkPipeline Renderer::createGraphicsPipeline() {
-  VkPushConstantRange push_constant_range{.stageFlags = kPushConstantStages,
+  VkPushConstantRange push_constant_range{.stageFlags =
+                                              gfx::kPushConstantStages,
                                           .offset = 0,
                                           .size = sizeof(PushConstants)};
 
@@ -402,6 +401,7 @@ VkPipeline Renderer::createGraphicsPipeline() {
 
 void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   const VkExtent2D extent = swapchain_->extent();
+  gfx::CommandList cmd(ctx.cmd);
 
   // Transition the color and depth images
   std::vector<VkImageMemoryBarrier2> layout_barriers{
@@ -443,52 +443,21 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
                             .imageMemoryBarrierCount =
                                 static_cast<uint32_t>(layout_barriers.size()),
                             .pImageMemoryBarriers = layout_barriers.data()};
-  vkCmdPipelineBarrier2(ctx.cmd, &dep_info);
+  vkCmdPipelineBarrier2(cmd.handle(), &dep_info);
 
-  VkRenderingAttachmentInfo color_attachment_info{
-      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      .imageView = swapchain_->imageView(ctx.image_index),
-      .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,   // Clear the image
-      .storeOp = VK_ATTACHMENT_STORE_OP_STORE, // keep dAta for presentation
-      .clearValue{.color{0.01f, 0.01f, 0.01f, 1}}};
-  VkRenderingAttachmentInfo depth_attachment_info{
-      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      .imageView = depth_image_view_,
-      .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-      .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-      .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-      .clearValue{.depthStencil{.depth = 0.0f, .stencil = 0}}};
+  const gfx::ColorAttachment color_attachment{
+      .view = swapchain_->imageView(ctx.image_index),
+      .clear_color = {0.01f, 0.01f, 0.01f, 1.0f}};
 
-  VkRenderingInfo rendering_info{
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea{.offset{.x = 0, .y = 0}, .extent = extent},
-      .layerCount = 1,
-      .colorAttachmentCount = 1,
-      .pColorAttachments = &color_attachment_info,
-      .pDepthAttachment = &depth_attachment_info};
-
-  // Begin dynamic rendering
-  vkCmdBeginRendering(ctx.cmd, &rendering_info);
+  cmd.beginRendering(
+      {.extent = extent,
+       .colors = {&color_attachment, 1},
+       .depth = gfx::DepthAttachment{.view = depth_image_view_}});
   {
-    VkViewport viewport{
-        .x = 0,
-        .y = 0,
-        .width = static_cast<float>(extent.width),
-        .height = static_cast<float>(extent.height),
-        .minDepth = 0,
-        .maxDepth = 1,
-    };
-    vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
+    cmd.setViewport(extent);
+    cmd.setScissor(extent);
+    cmd.bindPipeline(pipeline_, pipeline_layout_);
 
-    VkRect2D scissor{.offset{.x = 0, .y = 0}, .extent = extent};
-    vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
-
-    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
-
-    // Index buffers are bound per mesh, so consecutive draws of the same mesh
-    // skip the rebind.
-    VkBuffer bound_index_buffer = VK_NULL_HANDLE;
     for (const DrawItem &draw : desc.draws) {
       assert(draw.mesh.index < meshes_.size() && "DrawItem has no valid mesh");
       if (draw.mesh.index >= meshes_.size()) {
@@ -496,23 +465,16 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       }
       const Mesh &mesh = meshes_[draw.mesh.index];
 
-      if (mesh.index_buffer.handle != bound_index_buffer) {
-        vkCmdBindIndexBuffer(ctx.cmd, mesh.index_buffer.handle, 0,
-                             VK_INDEX_TYPE_UINT32);
-        bound_index_buffer = mesh.index_buffer.handle;
-      }
-
-      const PushConstants push{.transform = draw.transform,
-                               .view_projection = desc.view_projection,
-                               .vertex_buffer = mesh.vertex_buffer.address,
-                               .color = draw.color};
-      vkCmdPushConstants(ctx.cmd, pipeline_layout_, kPushConstantStages, 0,
-                         sizeof(push), &push);
-      vkCmdDrawIndexed(ctx.cmd, mesh.index_count, 1, 0, 0, 0);
+      cmd.bindIndexBuffer(mesh.index_buffer);
+      cmd.pushConstants(PushConstants{
+          .transform = draw.transform,
+          .view_projection = desc.view_projection,
+          .vertex_buffer = mesh.vertex_buffer.address,
+          .color = draw.color});
+      cmd.drawIndexed(mesh.index_count);
     }
   }
-  // End dynamic rendering
-  vkCmdEndRendering(ctx.cmd);
+  cmd.endRendering();
 
   VkImageMemoryBarrier2 present_layout_barrier{
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -535,7 +497,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
                                     .imageMemoryBarrierCount = 1,
                                     .pImageMemoryBarriers =
                                         &present_layout_barrier};
-  vkCmdPipelineBarrier2(ctx.cmd, &present_dep_info);
+  vkCmdPipelineBarrier2(cmd.handle(), &present_dep_info);
 }
 
 } // namespace strafe::renderer
