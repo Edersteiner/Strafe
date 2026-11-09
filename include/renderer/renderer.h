@@ -43,6 +43,8 @@ public:
   std::optional<MeshId> createMesh(std::span<const Vertex> vertices,
                                    std::span<const uint32_t> indices);
 
+  std::optional<MeshId> uploadMesh(Mesh mesh);
+
   void render(const gfx::FrameContext &ctx, const FrameDesc &desc);
 
 private:
