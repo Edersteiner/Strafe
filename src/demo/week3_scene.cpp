@@ -73,7 +73,7 @@ void buildScene(renderer::FrameDesc &frame, const Scene &scene, float aspect) {
            glm::scale(glm::rotate(translation(kRestingRedeadPosition),
                                   scene.time * kSpinSpeed, spin_axis),
                       glm::vec3(0.025f)),
-           glm::vec4(0.0f));
+           glm::vec4(1.0f));
 }
 
 } // namespace strafe::demo

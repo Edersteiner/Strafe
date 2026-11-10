@@ -10,6 +10,7 @@
 #include "gfx/vk_check.h"
 
 #include "vulkan/vulkan_core.h"
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -403,47 +404,20 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   const VkExtent2D extent = swapchain_->extent();
   gfx::CommandList cmd(ctx.cmd);
 
-  // Transition the color and depth images
-  std::vector<VkImageMemoryBarrier2> layout_barriers{
-      {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-       .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-       .srcAccessMask = 0,
-       .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-       .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-       .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-       .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-       .image = swapchain_->image(ctx.image_index),
-       .subresourceRange{
-           .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-           .baseMipLevel = 0,
-           .levelCount = 1,
-           .baseArrayLayer = 0,
-           .layerCount = 1,
-       }},
-      {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-       .srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                       VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-       .srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-       .dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                       VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-       .dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-                        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-       .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-       .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-       .image = depth_image_,
-       .subresourceRange{
-           .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-           .baseMipLevel = 0,
-           .levelCount = 1,
-           .baseArrayLayer = 0,
-           .layerCount = 1,
-       }}};
-
-  VkDependencyInfo dep_info{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                            .imageMemoryBarrierCount =
-                                static_cast<uint32_t>(layout_barriers.size()),
-                            .pImageMemoryBarriers = layout_barriers.data()};
-  vkCmdPipelineBarrier2(cmd.handle(), &dep_info);
+  // Both targets are cleared, so their old contents are discarded. The depth
+  // image is shared by every frame in flight, so it still waits for the
+  // previous frame's depth writes.
+  const std::array<gfx::ImageTransition, 2> begin_transitions{{
+      {.image = swapchain_->image(ctx.image_index),
+       .from = gfx::ResourceState::Present,
+       .to = gfx::ResourceState::ColorTarget,
+       .discard = true},
+      {.image = depth_image_,
+       .from = gfx::ResourceState::DepthTarget,
+       .to = gfx::ResourceState::DepthTarget,
+       .discard = true},
+  }};
+  cmd.transition(begin_transitions);
 
   const gfx::ColorAttachment color_attachment{
       .view = swapchain_->imageView(ctx.image_index),
@@ -476,28 +450,9 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   }
   cmd.endRendering();
 
-  VkImageMemoryBarrier2 present_layout_barrier{
-      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-      .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-      .dstStageMask = VK_PIPELINE_STAGE_2_NONE,
-      .dstAccessMask = 0,
-      .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-      .image = swapchain_->image(ctx.image_index),
-      .subresourceRange{
-          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-          .baseMipLevel = 0,
-          .levelCount = 1,
-          .baseArrayLayer = 0,
-          .layerCount = 1,
-      }};
-
-  VkDependencyInfo present_dep_info{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                                    .imageMemoryBarrierCount = 1,
-                                    .pImageMemoryBarriers =
-                                        &present_layout_barrier};
-  vkCmdPipelineBarrier2(cmd.handle(), &present_dep_info);
+  cmd.transition({.image = swapchain_->image(ctx.image_index),
+                  .from = gfx::ResourceState::ColorTarget,
+                  .to = gfx::ResourceState::Present});
 }
 
 } // namespace strafe::renderer

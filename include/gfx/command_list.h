@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gfx/buffer.h"
+#include "gfx/resource_state.h"
 
 #include <volk.h>
 
@@ -30,6 +31,16 @@ struct DepthAttachment {
   float clear_depth = 0.0f; // Reverse-Z: 0 is the far plane.
 };
 
+// Moves a whole image (every mip and layer) from one state to another. With
+// discard the old contents are thrown away, which skips the layout conversion,
+// but the barrier still waits for the previous use described by `from`.
+struct ImageTransition {
+  VkImage image = VK_NULL_HANDLE;
+  ResourceState from = ResourceState::Undefined;
+  ResourceState to = ResourceState::Undefined;
+  bool discard = false;
+};
+
 struct RenderingDesc {
   VkExtent2D extent{};
   std::span<const ColorAttachment> colors;
@@ -45,6 +56,10 @@ public:
 
   CommandList(const CommandList &) = delete;
   CommandList &operator=(const CommandList &) = delete;
+
+  // Barriers. Pass several transitions at once to record a single barrier.
+  void transition(const ImageTransition &transition);
+  void transition(std::span<const ImageTransition> transitions);
 
   // Rendering
   void beginRendering(const RenderingDesc &desc);
@@ -64,11 +79,9 @@ public:
                    uint32_t first_index = 0, int32_t vertex_offset = 0,
                    uint32_t first_instance = 0);
 
-  // Temporary, for the barriers until step 6 adds transition().
-  VkCommandBuffer handle() const { return buffer_; }
-
 private:
   static constexpr uint32_t kMaxColorAttachments = 8;
+  static constexpr uint32_t kMaxTransitions = 16;
 
   void pushConstantsBytes(const void *data, uint32_t size);
 
