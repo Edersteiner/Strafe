@@ -97,6 +97,11 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
   swapchain_ = &swapchain;
   frame_ring_ = &frame_ring;
 
+  if (!uploader_.initialize(device)) {
+    log::error("Failed to create the uploader");
+    return false;
+  }
+
   // No swapchain means the window starts minimized. resize() creates the
   // depth buffer once the swapchain exists.
   if (swapchain_->handle() && !createDepthBuffer(swapchain_->extent())) {
@@ -152,6 +157,7 @@ void Renderer::shutdown() {
   }
 
   destroyDepthBuffer();
+  uploader_.shutdown();
 }
 
 bool Renderer::resize(VkExtent2D extent) {
@@ -214,12 +220,16 @@ std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices,
   const std::span<const std::byte> vertex_bytes = std::as_bytes(vertices);
   const std::span<const std::byte> index_bytes = std::as_bytes(indices);
 
-  // The vertex buffer is only read through its device address, which
+  // Both live in device local memory and are filled once through the
+  // uploader. The vertex buffer is only read through its device address, which
   // createBuffer always adds.
-  const std::optional<gfx::Buffer> vertex_buffer =
-      gfx::createBuffer(*device_, vertex_bytes.size(), 0);
+  const std::optional<gfx::Buffer> vertex_buffer = gfx::createBuffer(
+      *device_, vertex_bytes.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      gfx::BufferMemory::DeviceLocal);
   const std::optional<gfx::Buffer> index_buffer = gfx::createBuffer(
-      *device_, index_bytes.size(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+      *device_, index_bytes.size(),
+      VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      gfx::BufferMemory::DeviceLocal);
 
   Mesh mesh{.index_count = static_cast<uint32_t>(indices.size())};
   if (vertex_buffer) {
@@ -230,8 +240,8 @@ std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices,
   }
 
   if (!vertex_buffer || !index_buffer ||
-      !gfx::writeBuffer(*device_, mesh.vertex_buffer, vertex_bytes) ||
-      !gfx::writeBuffer(*device_, mesh.index_buffer, index_bytes)) {
+      !uploader_.uploadBuffer(mesh.vertex_buffer, vertex_bytes) ||
+      !uploader_.uploadBuffer(mesh.index_buffer, index_bytes)) {
     log::error("Failed to create mesh buffers");
     deferDestroyMesh(mesh);
     return std::nullopt;

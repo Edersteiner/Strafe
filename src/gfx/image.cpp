@@ -23,6 +23,26 @@ VkImageAspectFlags aspectFromFormat(VkFormat format) {
   }
 }
 
+uint32_t texelSize(VkFormat format) {
+  switch (format) {
+  case VK_FORMAT_R8_UNORM:
+    return 1;
+  case VK_FORMAT_R8G8_UNORM:
+    return 2;
+  case VK_FORMAT_R8G8B8A8_UNORM:
+  case VK_FORMAT_R8G8B8A8_SRGB:
+  case VK_FORMAT_B8G8R8A8_UNORM:
+  case VK_FORMAT_B8G8R8A8_SRGB:
+    return 4;
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
+    return 8;
+  case VK_FORMAT_R32G32B32A32_SFLOAT:
+    return 16;
+  default:
+    return 0;
+  }
+}
+
 std::optional<Image> createImage(Device &device, const ImageDesc &desc) {
   if (desc.extent.width == 0 || desc.extent.height == 0) {
     log::error("Cannot create image of size {}x{}", desc.extent.width,
@@ -57,6 +77,7 @@ std::optional<Image> createImage(Device &device, const ImageDesc &desc) {
 
   Image image{.format = desc.format,
               .aspect = aspectFromFormat(desc.format),
+              .usage = desc.usage,
               .extent = desc.extent,
               .mip_levels = desc.mip_levels};
   if (!VK_CHECK(vmaCreateImage(device.allocator(), &image_info, &alloc_info,

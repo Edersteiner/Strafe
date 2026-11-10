@@ -119,6 +119,53 @@ void CommandList::transition(std::span<const ImageTransition> transitions) {
   vkCmdPipelineBarrier2(buffer_, &dependency);
 }
 
+void CommandList::copyBuffer(const Buffer &src, const Buffer &dst,
+                             VkDeviceSize size, VkDeviceSize src_offset,
+                             VkDeviceSize dst_offset) {
+  assert(!inside_rendering_ && "Copies can't be recorded inside rendering");
+  assert(src.handle && dst.handle && size > 0);
+  assert(src_offset + size <= src.size && dst_offset + size <= dst.size);
+
+  const VkBufferCopy2 region{.sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2,
+                             .srcOffset = src_offset,
+                             .dstOffset = dst_offset,
+                             .size = size};
+  const VkCopyBufferInfo2 info{.sType = VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2,
+                               .srcBuffer = src.handle,
+                               .dstBuffer = dst.handle,
+                               .regionCount = 1,
+                               .pRegions = &region};
+  vkCmdCopyBuffer2(buffer_, &info);
+}
+
+void CommandList::copyBufferToImage(const Buffer &src, const Image &dst) {
+  assert(!inside_rendering_ && "Copies can't be recorded inside rendering");
+  assert(src.handle && dst.handle);
+
+  // Zero row length and image height mean the buffer is tightly packed.
+  const VkBufferImageCopy2 region{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
+      .bufferOffset = 0,
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource{.aspectMask = dst.aspect,
+                        .mipLevel = 0,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1},
+      .imageOffset{.x = 0, .y = 0, .z = 0},
+      .imageExtent{.width = dst.extent.width,
+                   .height = dst.extent.height,
+                   .depth = 1}};
+  const VkCopyBufferToImageInfo2 info{
+      .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
+      .srcBuffer = src.handle,
+      .dstImage = dst.handle,
+      .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      .regionCount = 1,
+      .pRegions = &region};
+  vkCmdCopyBufferToImage2(buffer_, &info);
+}
+
 void CommandList::beginRendering(const RenderingDesc &desc) {
   assert(!inside_rendering_ && "Already inside a rendering pass");
   assert(desc.colors.size() <= kMaxColorAttachments);

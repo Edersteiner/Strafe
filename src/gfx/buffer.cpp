@@ -9,7 +9,8 @@
 namespace strafe::gfx {
 
 std::optional<Buffer> createBuffer(Device &device, VkDeviceSize size,
-                                   VkBufferUsageFlags usage) {
+                                   VkBufferUsageFlags usage,
+                                   BufferMemory memory) {
   if (size <= 0) {
     log::error("Cannot create buffer of size 0");
     return std::nullopt;
@@ -21,9 +22,13 @@ std::optional<Buffer> createBuffer(Device &device, VkDeviceSize size,
       .usage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
   };
 
+  const bool host_write = memory == BufferMemory::HostWrite;
   VmaAllocationCreateInfo alloc_info{
-      .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-      .usage = VMA_MEMORY_USAGE_AUTO,
+      .flags = host_write
+                   ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                   : VmaAllocationCreateFlags{0},
+      .usage = host_write ? VMA_MEMORY_USAGE_AUTO
+                          : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
   };
 
   Buffer new_buffer{};

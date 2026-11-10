@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gfx/image.h"
+#include "gfx/uploader.h"
 #include "renderer/frame_desc.h"
 #include "renderer/mesh.h"
 
@@ -60,6 +61,8 @@ private:
   gfx::Device *device_ = nullptr;
   gfx::Swapchain *swapchain_ = nullptr;
   gfx::FrameRing *frame_ring_ = nullptr;
+
+  gfx::Uploader uploader_;
 
   gfx::Image depth_image_;
 

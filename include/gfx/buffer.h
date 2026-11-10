@@ -18,10 +18,20 @@ struct Buffer {
   VkDeviceSize size = 0;
 };
 
+enum class BufferMemory {
+  // Written by the CPU through writeBuffer. Staging buffers and small
+  // per-frame data.
+  HostWrite,
+  // Fastest for the GPU, but only reachable through Uploader. Needs
+  // TRANSFER_DST in the usage.
+  DeviceLocal,
+};
+
 // Creates and returns a buffer, adds SHADER_DEVICE_ADDRESS so returned buffer
 // always has a valid address.
 std::optional<Buffer> createBuffer(Device &device, VkDeviceSize size,
-                                   VkBufferUsageFlags usage);
+                                   VkBufferUsageFlags usage,
+                                   BufferMemory memory = BufferMemory::HostWrite);
 
 // Copies and flushes. The range must fit inside the buffer, and the GPU must
 // not be reading it.

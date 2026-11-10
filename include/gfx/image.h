@@ -28,12 +28,16 @@ struct Image {
   VmaAllocation allocation = VK_NULL_HANDLE;
   VkFormat format = VK_FORMAT_UNDEFINED;
   VkImageAspectFlags aspect = 0;
+  VkImageUsageFlags usage = 0;
   VkExtent2D extent{};
   uint32_t mip_levels = 0;
 };
 
 // The aspect a view or barrier of this format needs.
 VkImageAspectFlags aspectFromFormat(VkFormat format);
+
+// Bytes per texel for the uncompressed formats uploads support, 0 otherwise.
+uint32_t texelSize(VkFormat format);
 
 // Creates the image in device local memory together with a view over all of
 // it. The image starts in ResourceState::Undefined.

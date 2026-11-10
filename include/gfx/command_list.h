@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gfx/buffer.h"
+#include "gfx/image.h"
 #include "gfx/resource_state.h"
 
 #include <volk.h>
@@ -62,6 +63,11 @@ public:
   // Barriers. Pass several transitions at once to record a single barrier.
   void transition(const ImageTransition &transition);
   void transition(std::span<const ImageTransition> transitions);
+
+  // Copies. The image must be in TransferDst. Only mip 0 is written.
+  void copyBuffer(const Buffer &src, const Buffer &dst, VkDeviceSize size,
+                  VkDeviceSize src_offset = 0, VkDeviceSize dst_offset = 0);
+  void copyBufferToImage(const Buffer &src, const Image &dst);
 
   // Rendering
   void beginRendering(const RenderingDesc &desc);
