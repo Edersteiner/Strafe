@@ -102,6 +102,19 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
     return false;
   }
 
+  const TextureData white{
+      .width = 1,
+      .height = 1,
+      .rgba = {std::byte{0xff}, std::byte{0xff}, std::byte{0xff},
+               std::byte{0xff}}};
+  if (const std::optional<TextureId> id =
+          createTexture(white, ColorSpace::Srgb)) {
+    default_texture_ = *id;
+  } else {
+    log::error("Failed to create the default texture");
+    return false;
+  }
+
   // No swapchain means the window starts minimized. resize() creates the
   // depth buffer once the swapchain exists.
   if (swapchain_->handle() && !createDepthBuffer(swapchain_->extent())) {
@@ -142,6 +155,14 @@ void Renderer::shutdown() {
     deferDestroyMesh(mesh);
   }
   meshes_.clear();
+
+  for (const gfx::Image &texture : textures_) {
+    frame_ring_->deferDestroy([gfx_device = device_, texture] {
+      gfx::destroyImage(*gfx_device, texture);
+    });
+  }
+  textures_.clear();
+  default_texture_ = {};
 
   if (vert_shader_) {
     frame_ring_->deferDestroy([device, handle = vert_shader_] {
@@ -249,6 +270,30 @@ std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices,
 
   meshes_.push_back(mesh);
   return MeshId{.index = static_cast<uint32_t>(meshes_.size() - 1)};
+}
+
+std::optional<TextureId> Renderer::createTexture(const TextureData &data,
+                                                 ColorSpace color_space) {
+  const std::optional<gfx::Image> image = gfx::createImage(
+      *device_,
+      {.extent = {.width = data.width, .height = data.height},
+       .format = color_space == ColorSpace::Srgb ? VK_FORMAT_R8G8B8A8_SRGB
+                                                 : VK_FORMAT_R8G8B8A8_UNORM,
+       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT});
+  if (!image) {
+    log::error("Failed to create a {}x{} texture", data.width, data.height);
+    return std::nullopt;
+  }
+
+  // Validates the byte count against the extent and format.
+  if (!uploader_.uploadImage(*image, data.rgba)) {
+    // Nothing on the GPU uses it, and the uploader has finished with it.
+    gfx::destroyImage(*device_, *image);
+    return std::nullopt;
+  }
+
+  textures_.push_back(*image);
+  return TextureId{.index = static_cast<uint32_t>(textures_.size() - 1)};
 }
 
 void Renderer::deferDestroyMesh(const Mesh &mesh) {

@@ -4,6 +4,7 @@
 #include "gfx/uploader.h"
 #include "renderer/frame_desc.h"
 #include "renderer/mesh.h"
+#include "renderer/texture.h"
 
 #include <volk.h>
 #include <vk_mem_alloc.h>
@@ -47,6 +48,14 @@ public:
 
   std::optional<MeshId> uploadMesh(Mesh mesh);
 
+  // Uploads the texture once, without mipmaps. The returned id stays valid
+  // until shutdown.
+  std::optional<TextureId> createTexture(const TextureData &data,
+                                         ColorSpace color_space);
+
+  // 1x1 white, so an untextured draw keeps its plain color.
+  TextureId defaultTexture() const { return default_texture_; }
+
   void render(const gfx::FrameContext &ctx, const FrameDesc &desc);
 
 private:
@@ -73,6 +82,8 @@ private:
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 
   std::vector<Mesh> meshes_;
+  std::vector<gfx::Image> textures_;
+  TextureId default_texture_;
 };
 
 } // namespace strafe::renderer

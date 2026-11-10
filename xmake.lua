@@ -17,6 +17,7 @@ add_requireconfs("shaderc.glslang", "shaderc.spirv-tools", "shaderc.spirv-header
     { override = true, version = vulkan_sdk })
 add_requires("libsdl3 3.4.16")
 add_requires("glm 1.0.3")
+add_requires("stb 2026.03.18")
 
 -- Copies runtime files like shaders and assets to the build location
 task("stage_runtime_files")
@@ -35,7 +36,7 @@ target("Strafe")
     set_kind("binary")
     add_files("src/**.cpp")
     add_includedirs("include/", { public = true })
-    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "shaderc", "libsdl3", "glm")
+    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "shaderc", "libsdl3", "glm", "stb")
 
     -- volk loads the Vulkan loader at runtime, so nothing links against it.
     add_defines("VK_NO_PROTOTYPES")
