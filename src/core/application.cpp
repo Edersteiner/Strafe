@@ -1,7 +1,7 @@
 #include "core/application.h"
 
 #include "SDL3/SDL_events.h"
-#include "demo/week2_scene.h"
+#include "demo/week3_scene.h"
 #include <cstdint>
 #include <optional>
 

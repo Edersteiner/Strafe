@@ -6,8 +6,8 @@
 #include "renderer/frame_desc.h"
 #include "renderer/renderer.h"
 
-// Week 2 Demo
-#include "demo/week2_scene.h"
+// Week 3 Demo
+#include "demo/week3_scene.h"
 
 #include <SDL3/SDL.h>
 

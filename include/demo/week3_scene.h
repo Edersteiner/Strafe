@@ -10,9 +10,7 @@ class Renderer;
 namespace strafe::demo {
 
 struct Scene {
-  renderer::MeshId cube;
-  renderer::MeshId pyramid;
-  renderer::MeshId sphere;
+  renderer::MeshId redead;
   bool perspective = true;
   float time = 0.0f;
 };

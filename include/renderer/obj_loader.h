@@ -4,6 +4,6 @@
 
 namespace strafe::renderer {
 
-Mesh loadFromObj(const char *file_path);
+std::optional<MeshData> loadFromObj(const char *file_path);
 
 } // namespace strafe::renderer
