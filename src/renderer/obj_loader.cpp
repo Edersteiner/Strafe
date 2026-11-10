@@ -250,7 +250,7 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
     }
   }
 
-  auto inRange = [](int idx, size_t size, bool optional) {
+  auto in_range = [](int idx, size_t size, bool optional) {
     if (idx < 0) {
       return optional && idx == -1;
     }
@@ -260,9 +260,9 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
   // Validate every face index before mesh construction to avoid later checks.
   for (size_t f = 0; f < faces.size(); ++f) {
     for (const ObjVertex &v : faces[f].verts) {
-      if (!inRange(v.pos_idx, vertex_positions.size(), false) ||
-          !inRange(v.uv_idx, vertex_uvs.size(), true) ||
-          !inRange(v.nrm_idx, vertex_normals.size(), true)) {
+      if (!in_range(v.pos_idx, vertex_positions.size(), false) ||
+          !in_range(v.uv_idx, vertex_uvs.size(), true) ||
+          !in_range(v.nrm_idx, vertex_normals.size(), true)) {
         log::error(
             "Face {} references a missing vertex (pos {}, uv {}, nrm {})",
             f + 1, v.pos_idx, v.uv_idx, v.nrm_idx);

@@ -56,12 +56,14 @@ StateInfo stateInfo(ResourceState state) {
           VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT};
 }
 
-// Todo: take the aspect from the image's format once images carry a desc.
-// Until then a depth image can only be transitioned through DepthTarget.
-VkImageAspectFlags aspectFor(const ImageTransition &transition) {
-  const bool depth = transition.from == ResourceState::DepthTarget ||
-                     transition.to == ResourceState::DepthTarget;
-  return depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+// Catches a depth image transitioned with the default color aspect.
+bool aspectMatchesStates(const ImageTransition &t) {
+  const bool depth_state = t.from == ResourceState::DepthTarget ||
+                           t.to == ResourceState::DepthTarget;
+  const bool color_state = t.from == ResourceState::ColorTarget ||
+                           t.to == ResourceState::ColorTarget;
+  const bool depth_aspect = (t.aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0;
+  return !(depth_state && !depth_aspect) && !(color_state && depth_aspect);
 }
 
 } // namespace
@@ -89,6 +91,7 @@ void CommandList::transition(std::span<const ImageTransition> transitions) {
   for (std::size_t i = 0; i < transitions.size(); ++i) {
     const ImageTransition &t = transitions[i];
     assert(t.image && t.to != ResourceState::Undefined);
+    assert(aspectMatchesStates(t) && "Aspect doesn't fit the image's states");
     const StateInfo src = stateInfo(t.from);
     const StateInfo dst = stateInfo(t.to);
     barriers[i] = {
@@ -102,7 +105,7 @@ void CommandList::transition(std::span<const ImageTransition> transitions) {
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = t.image,
-        .subresourceRange{.aspectMask = aspectFor(t),
+        .subresourceRange{.aspectMask = t.aspect,
                           .baseMipLevel = 0,
                           .levelCount = VK_REMAINING_MIP_LEVELS,
                           .baseArrayLayer = 0,

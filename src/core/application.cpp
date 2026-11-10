@@ -7,7 +7,6 @@
 
 #include "core/log.h"
 #include "gfx/vk_check.h"
-#include "renderer/obj_loader.h"
 
 namespace strafe {
 
@@ -35,8 +34,6 @@ bool Application::initialize() {
     log::error("Failed to initialise SDL Subsystems: {}", SDL_GetError());
     return false;
   }
-
-  renderer::loadFromObj("assets/models/redead.obj");
 
   return true;
 }

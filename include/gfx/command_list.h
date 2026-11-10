@@ -34,11 +34,13 @@ struct DepthAttachment {
 // Moves a whole image (every mip and layer) from one state to another. With
 // discard the old contents are thrown away, which skips the layout conversion,
 // but the barrier still waits for the previous use described by `from`.
+// The aspect must match the image's format; gfx::Image carries it.
 struct ImageTransition {
   VkImage image = VK_NULL_HANDLE;
   ResourceState from = ResourceState::Undefined;
   ResourceState to = ResourceState::Undefined;
   bool discard = false;
+  VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 };
 
 struct RenderingDesc {

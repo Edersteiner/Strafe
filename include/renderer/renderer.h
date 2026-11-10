@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gfx/image.h"
 #include "renderer/frame_desc.h"
 #include "renderer/mesh.h"
 
@@ -60,9 +61,7 @@ private:
   gfx::Swapchain *swapchain_ = nullptr;
   gfx::FrameRing *frame_ring_ = nullptr;
 
-  VkImage depth_image_ = VK_NULL_HANDLE;
-  VkImageView depth_image_view_ = VK_NULL_HANDLE;
-  VmaAllocation depth_image_allocation_ = VK_NULL_HANDLE;
+  gfx::Image depth_image_;
 
   VkShaderModule vert_shader_ = VK_NULL_HANDLE;
   VkShaderModule frag_shader_ = VK_NULL_HANDLE;

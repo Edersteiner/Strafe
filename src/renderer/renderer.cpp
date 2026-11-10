@@ -163,55 +163,21 @@ bool Renderer::resize(VkExtent2D extent) {
 }
 
 bool Renderer::createDepthBuffer(VkExtent2D extent) {
-  VkImageCreateInfo depth_create_info{
-      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-      .imageType = VK_IMAGE_TYPE_2D,
-      .format = kDepthFormat,
-      .extent{.width = extent.width, .height = extent.height, .depth = 1},
-      .mipLevels = 1,
-      .arrayLayers = 1,
-      .samples = VK_SAMPLE_COUNT_1_BIT,
-      .tiling = VK_IMAGE_TILING_OPTIMAL,
-      .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
-
-  VmaAllocationCreateInfo alloc_info{
-      .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-      .usage = VMA_MEMORY_USAGE_AUTO};
-  if (!VK_CHECK(vmaCreateImage(device_->allocator(), &depth_create_info,
-                               &alloc_info, &depth_image_,
-                               &depth_image_allocation_, nullptr))) {
+  const std::optional<gfx::Image> depth = gfx::createImage(
+      *device_, {.extent = extent,
+                 .format = kDepthFormat,
+                 .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                 .dedicated = true});
+  if (!depth) {
     return false;
   }
-
-  VkImageViewCreateInfo depth_img_view_info{
-      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = depth_image_,
-      .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = kDepthFormat,
-      .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                        .levelCount = 1,
-                        .layerCount = 1}};
-  if (!VK_CHECK(vkCreateImageView(device_->logicalDevice(),
-                                  &depth_img_view_info, nullptr,
-                                  &depth_image_view_))) {
-    return false;
-  }
-
+  depth_image_ = *depth;
   return true;
 }
 
 void Renderer::destroyDepthBuffer() {
-  if (depth_image_view_) {
-    vkDestroyImageView(device_->logicalDevice(), depth_image_view_, nullptr);
-    depth_image_view_ = VK_NULL_HANDLE;
-  }
-  if (depth_image_) {
-    vmaDestroyImage(device_->allocator(), depth_image_,
-                    depth_image_allocation_);
-    depth_image_ = VK_NULL_HANDLE;
-    depth_image_allocation_ = VK_NULL_HANDLE;
-  }
+  gfx::destroyImage(*device_, depth_image_);
+  depth_image_ = {};
 }
 
 bool Renderer::createShaders() {
@@ -412,10 +378,11 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
        .from = gfx::ResourceState::Present,
        .to = gfx::ResourceState::ColorTarget,
        .discard = true},
-      {.image = depth_image_,
+      {.image = depth_image_.handle,
        .from = gfx::ResourceState::DepthTarget,
        .to = gfx::ResourceState::DepthTarget,
-       .discard = true},
+       .discard = true,
+       .aspect = depth_image_.aspect},
   }};
   cmd.transition(begin_transitions);
 
@@ -426,7 +393,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   cmd.beginRendering(
       {.extent = extent,
        .colors = {&color_attachment, 1},
-       .depth = gfx::DepthAttachment{.view = depth_image_view_}});
+       .depth = gfx::DepthAttachment{.view = depth_image_.view}});
   {
     cmd.setViewport(extent);
     cmd.setScissor(extent);
