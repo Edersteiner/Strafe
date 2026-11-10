@@ -1,8 +1,21 @@
 #version 460
 
+#extension GL_EXT_nonuniform_qualifier : require
+
 layout(location = 0) in vec3 inColor;
 layout(location = 1) in vec3 inWorldPos;
 layout(location = 2) in vec3 inWorldNormal;
+layout(location = 3) in vec2 inUV;
+
+// Bindless set
+layout(set = 0, binding = 0) uniform texture2D sampled_images[];
+layout(set = 0, binding = 2) uniform sampler samplers[];
+
+// Only the members this stage reads, at their offsets in PushConstants.
+layout(push_constant) uniform PushConstants {
+  layout(offset = 152) uint texture_index;
+  layout(offset = 156) uint sampler_index;
+} pc;
 
 layout(location = 0) out vec4 fragColor;
 
@@ -16,7 +29,6 @@ const vec3 kAmbient = vec3(0.12, 0.13, 0.16);
 const bool kShowNormals = false;
 
 void main() {
-  // Interpolation shortens the normal between vertices, so renormalize.
   vec3 normal = normalize(inWorldNormal);
 
   if (kShowNormals) {
@@ -24,10 +36,13 @@ void main() {
     return;
   }
 
-  // Lambert: brightness is the cosine of the angle between the surface normal
-  // and the direction towards the light, clamped so back faces get none.
   float n_dot_l = max(dot(normal, -kLightDirection), 0.0);
-  vec3 lit = inColor * (kAmbient + kLightColor * n_dot_l);
 
-  fragColor = vec4(lit, 1.0);
+  vec4 albedo = texture(
+      sampler2D(sampled_images[nonuniformEXT(pc.texture_index)],
+        samplers[nonuniformEXT(pc.sampler_index)]),
+      inUV);
+  vec3 lit = albedo.rgb * inColor * (kAmbient + kLightColor * n_dot_l);
+
+  fragColor = vec4(lit, albedo.a);
 }

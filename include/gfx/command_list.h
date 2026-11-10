@@ -79,6 +79,9 @@ public:
 
   // Pipeline and data
   void bindPipeline(VkPipeline pipeline, VkPipelineLayout layout);
+  // Binds the bindless set as set 0 with the bound pipeline's layout. Every
+  // pipeline shares that layout, so once per command buffer is enough.
+  void bindBindlessSet(VkDescriptorSet set);
   template <typename T> void pushConstants(const T &data);
   void bindIndexBuffer(const Buffer &buffer);
 

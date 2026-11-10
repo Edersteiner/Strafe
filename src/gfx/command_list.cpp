@@ -238,6 +238,12 @@ void CommandList::bindPipeline(VkPipeline pipeline, VkPipelineLayout layout) {
   bound_layout_ = layout;
 }
 
+void CommandList::bindBindlessSet(VkDescriptorSet set) {
+  assert(set && bound_layout_ && "bindPipeline before bindBindlessSet");
+  vkCmdBindDescriptorSets(buffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          bound_layout_, 0, 1, &set, 0, nullptr);
+}
+
 void CommandList::pushConstantsBytes(const void *data, uint32_t size) {
   assert(bound_layout_ && "bindPipeline before pushConstants");
   vkCmdPushConstants(buffer_, bound_layout_, kPushConstantStages, 0, size,

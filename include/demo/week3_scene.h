@@ -11,6 +11,7 @@ namespace strafe::demo {
 
 struct Scene {
   renderer::MeshId redead;
+  renderer::TextureId redead_texture;
   bool perspective = true;
   float time = 0.0f;
 };

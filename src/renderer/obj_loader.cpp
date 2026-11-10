@@ -172,6 +172,9 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
         log::error("Failed to parse texture coordinates: {}", line);
         return std::nullopt;
       }
+      // Flip texture vertically,
+      // OBJ V-Axis points up while Vulkan points down
+      texcoord.y = 1 - texcoord.y;
       vertex_uvs.push_back(texcoord);
 
       log::debug("vt{} - U: {}, V: {}", vertex_uvs.size(), texcoord.x,

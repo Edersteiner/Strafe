@@ -1,10 +1,10 @@
 #include "demo/week3_scene.h"
 
-#include "demo/sphere.h"
 #include "renderer/camera.h"
 #include "renderer/mesh.h"
 #include "renderer/obj_loader.h"
 #include "renderer/renderer.h"
+#include "renderer/texture_loader.h"
 
 #include <array>
 #include <cmath>
@@ -29,8 +29,11 @@ constexpr float kFarPlane = 100.0f;
 constexpr float kOrthographicHeight = 6.0f;
 
 void drawMesh(renderer::FrameDesc &frame, renderer::MeshId mesh,
-              const glm::mat4 &transform, glm::vec4 color) {
-  frame.draws.push_back({.mesh = mesh, .transform = transform, .color = color});
+              const glm::mat4 &transform, renderer::TextureId texture) {
+  frame.draws.push_back({.mesh = mesh,
+                         .transform = transform,
+                         .color = glm::vec4(1.0f),
+                         .texture = texture});
 }
 
 glm::mat4 translation(glm::vec3 position) {
@@ -44,6 +47,10 @@ bool createSceneMeshes(renderer::Renderer &renderer, Scene &scene) {
     redead = renderer.createMesh(redead_data->vertices, redead_data->indices);
   }
 
+  if (auto tex = renderer::loadTexture("assets/textures/redead_grp.png")) {
+    scene.redead_texture =
+        *renderer.createTexture(*tex, renderer::ColorSpace::Srgb);
+  }
   if (!redead) {
     return false;
   }
@@ -73,7 +80,7 @@ void buildScene(renderer::FrameDesc &frame, const Scene &scene, float aspect) {
            glm::scale(glm::rotate(translation(kRestingRedeadPosition),
                                   scene.time * kSpinSpeed, spin_axis),
                       glm::vec3(0.025f)),
-           glm::vec4(1.0f));
+           scene.redead_texture);
 }
 
 } // namespace strafe::demo

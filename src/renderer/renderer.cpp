@@ -81,13 +81,18 @@ struct PushConstants {
   glm::mat4 view_projection = glm::mat4(1.0f);
   VkDeviceAddress vertex_buffer = 0;
   glm::vec4 color = glm::vec4(1.0f);
+  uint32_t texture_index = 0; // Bindless sampled image slot.
+  uint32_t sampler_index = 0; // A gfx::Sampler value.
 };
 
-static_assert(sizeof(PushConstants) == 152);
+// Must match the push constant block in shader.vert and shader.frag.
+static_assert(sizeof(PushConstants) == 160);
 static_assert(offsetof(PushConstants, transform) == 0);
 static_assert(offsetof(PushConstants, view_projection) == 64);
 static_assert(offsetof(PushConstants, vertex_buffer) == 128);
 static_assert(offsetof(PushConstants, color) == 136);
+static_assert(offsetof(PushConstants, texture_index) == 152);
+static_assert(offsetof(PushConstants, sampler_index) == 156);
 
 } // namespace
 
@@ -99,6 +104,10 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
 
   if (!uploader_.initialize(device)) {
     log::error("Failed to create the uploader");
+    return false;
+  }
+  if (!bindless_.initialize(device)) {
+    log::error("Failed to create the bindless descriptor set");
     return false;
   }
 
@@ -156,9 +165,11 @@ void Renderer::shutdown() {
   }
   meshes_.clear();
 
-  for (const gfx::Image &texture : textures_) {
-    frame_ring_->deferDestroy([gfx_device = device_, texture] {
-      gfx::destroyImage(*gfx_device, texture);
+  // The whole bindless set goes away below, so the slots aren't freed one by
+  // one.
+  for (const Texture &texture : textures_) {
+    frame_ring_->deferDestroy([gfx_device = device_, image = texture.image] {
+      gfx::destroyImage(*gfx_device, image);
     });
   }
   textures_.clear();
@@ -178,6 +189,8 @@ void Renderer::shutdown() {
   }
 
   destroyDepthBuffer();
+  // Both safe to destroy now, because the GPU is idle.
+  bindless_.shutdown();
   uploader_.shutdown();
 }
 
@@ -292,7 +305,13 @@ std::optional<TextureId> Renderer::createTexture(const TextureData &data,
     return std::nullopt;
   }
 
-  textures_.push_back(*image);
+  const std::optional<uint32_t> slot = bindless_.addSampledImage(image->view);
+  if (!slot) {
+    gfx::destroyImage(*device_, *image);
+    return std::nullopt;
+  }
+
+  textures_.push_back({.image = *image, .bindless_slot = *slot});
   return TextureId{.index = static_cast<uint32_t>(textures_.size() - 1)};
 }
 
@@ -309,9 +328,11 @@ VkPipeline Renderer::createGraphicsPipeline() {
                                           .offset = 0,
                                           .size = sizeof(PushConstants)};
 
+  const VkDescriptorSetLayout bindless_layout = bindless_.layout();
   VkPipelineLayoutCreateInfo pipeline_layout_info{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 0,
+      .setLayoutCount = 1,
+      .pSetLayouts = &bindless_layout,
       .pushConstantRangeCount = 1,
       .pPushConstantRanges = &push_constant_range};
   if (!VK_CHECK(vkCreatePipelineLayout(device_->logicalDevice(),
@@ -453,6 +474,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
     cmd.setViewport(extent);
     cmd.setScissor(extent);
     cmd.bindPipeline(pipeline_, pipeline_layout_);
+    cmd.bindBindlessSet(bindless_.set());
 
     for (const DrawItem &draw : desc.draws) {
       assert(draw.mesh.index < meshes_.size() && "DrawItem has no valid mesh");
@@ -461,12 +483,21 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       }
       const Mesh &mesh = meshes_[draw.mesh.index];
 
+      // An invalid or stale id falls back to white instead of sampling an
+      // empty slot, which would be undefined behaviour on the GPU.
+      const TextureId texture_id =
+          draw.texture.index < textures_.size() ? draw.texture
+                                                : default_texture_;
+      const Texture &texture = textures_[texture_id.index];
+
       cmd.bindIndexBuffer(mesh.index_buffer);
       cmd.pushConstants(PushConstants{
           .transform = draw.transform,
           .view_projection = desc.view_projection,
           .vertex_buffer = mesh.vertex_buffer.address,
-          .color = draw.color});
+          .color = draw.color,
+          .texture_index = texture.bindless_slot,
+          .sampler_index = static_cast<uint32_t>(draw.sampler)});
       cmd.drawIndexed(mesh.index_count);
     }
   }

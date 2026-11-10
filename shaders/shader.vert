@@ -18,11 +18,14 @@ layout(push_constant, scalar) uniform PushConstants {
   mat4 view_projection;
   VertexBuffer vertex_buffer;
   vec4 color;
+  uint texture_index;
+  uint sampler_index;
 } pc;
 
 layout(location = 0) out vec3 outColor;
 layout(location = 1) out vec3 outWorldPos;
 layout(location = 2) out vec3 outWorldNormal;
+layout(location = 3) out vec2 outUV;
 
 void main() {
   Vertex vertex = pc.vertex_buffer.vertices[gl_VertexIndex];
@@ -31,4 +34,5 @@ void main() {
   outColor = pc.color.rgb;
   outWorldPos = world_pos.xyz;
   outWorldNormal = normalize(mat3(pc.transform) * vertex.normal);
+  outUV = vertex.uv;
 }

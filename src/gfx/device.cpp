@@ -356,7 +356,15 @@ bool Device::createLogicalDevice() {
       !supported_features_13.synchronization2 ||
       !supported_features_12.timelineSemaphore ||
       !supported_features_12.bufferDeviceAddress ||
-      !supported_features_12.scalarBlockLayout) {
+      !supported_features_12.scalarBlockLayout ||
+      // Bindless descriptors, see BindlessSet.
+      !supported_features_12.runtimeDescriptorArray ||
+      !supported_features_12.descriptorBindingPartiallyBound ||
+      !supported_features_12.descriptorBindingSampledImageUpdateAfterBind ||
+      !supported_features_12.descriptorBindingStorageImageUpdateAfterBind ||
+      !supported_features_12.shaderSampledImageArrayNonUniformIndexing ||
+      !supported_features_12.shaderStorageImageArrayNonUniformIndexing ||
+      !supported_features.features.samplerAnisotropy) {
     log::error("Physical device doesn't meet the feature requirements");
     return false;
   }
@@ -373,12 +381,19 @@ bool Device::createLogicalDevice() {
   VkPhysicalDeviceVulkan12Features features_12{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .pNext = &features_13,
+      .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+      .shaderStorageImageArrayNonUniformIndexing = VK_TRUE,
+      .descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
+      .descriptorBindingStorageImageUpdateAfterBind = VK_TRUE,
+      .descriptorBindingPartiallyBound = VK_TRUE,
+      .runtimeDescriptorArray = VK_TRUE,
       .scalarBlockLayout = VK_TRUE,
       .timelineSemaphore = VK_TRUE,
       .bufferDeviceAddress = VK_TRUE};
   VkPhysicalDeviceFeatures2 features{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-      .pNext = &features_12};
+      .pNext = &features_12,
+      .features{.samplerAnisotropy = VK_TRUE}};
 
   // request queues
   std::vector<float> queue_priorities{1.0f};

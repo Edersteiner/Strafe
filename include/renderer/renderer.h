@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gfx/bindless.h"
 #include "gfx/image.h"
 #include "gfx/uploader.h"
 #include "renderer/frame_desc.h"
@@ -61,6 +62,12 @@ public:
 private:
   static constexpr VkFormat kDepthFormat = VK_FORMAT_D32_SFLOAT;
 
+  struct Texture {
+    gfx::Image image;
+    // Index into the bindless sampled image array, pushed with each draw.
+    uint32_t bindless_slot = 0;
+  };
+
   bool createDepthBuffer(VkExtent2D extent);
   void destroyDepthBuffer();
   bool createShaders();
@@ -72,6 +79,7 @@ private:
   gfx::FrameRing *frame_ring_ = nullptr;
 
   gfx::Uploader uploader_;
+  gfx::BindlessSet bindless_;
 
   gfx::Image depth_image_;
 
@@ -82,7 +90,7 @@ private:
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 
   std::vector<Mesh> meshes_;
-  std::vector<gfx::Image> textures_;
+  std::vector<Texture> textures_;
   TextureId default_texture_;
 };
 
