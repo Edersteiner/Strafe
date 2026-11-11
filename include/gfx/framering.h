@@ -28,6 +28,8 @@ struct FrameContext {
 
 class FrameRing {
 public:
+  static constexpr uint32_t kMaxFramesInFlight = 2;
+
   FrameRing() = default;
   ~FrameRing() = default;
 
@@ -43,8 +45,6 @@ public:
   void deferDestroy(std::function<void()> destroy_fn);
 
 private:
-  static constexpr uint32_t kMaxFramesInFlight = 2;
-
   bool createSyncResources();
   bool createCommandBuffers();
 

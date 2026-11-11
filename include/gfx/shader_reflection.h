@@ -23,6 +23,8 @@ struct ShaderReflection {
   uint32_t color_outputs = 0;
   // Size of the push constant block, 0 when the shader doesn't use it.
   uint32_t push_constant_size = 0;
+  // Size of what DrawPush::frame points to, 0 when there is no such field.
+  uint32_t frame_data_size = 0;
 };
 
 } // namespace strafe::gfx

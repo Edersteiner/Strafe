@@ -56,14 +56,14 @@ bool hasStage(const CompiledShader &shader, VkShaderStageFlagBits stage) {
 
 bool PipelineManager::initialize(Device &device, FrameRing &frame_ring,
                                  VkDescriptorSetLayout bindless_layout,
-                                 uint32_t push_constant_size,
+                                 SharedStructSizes shared_sizes,
                                  std::string shader_directory) {
   device_ = &device;
   frame_ring_ = &frame_ring;
-  push_constant_size_ = push_constant_size;
-  if (push_constant_size_ > kPushConstantRangeSize) {
+  shared_sizes_ = shared_sizes;
+  if (shared_sizes_.push_constants > kPushConstantRangeSize) {
     log::error("Push constants of {} bytes exceed the {} byte range",
-               push_constant_size_, kPushConstantRangeSize);
+               shared_sizes_.push_constants, kPushConstantRangeSize);
     return false;
   }
 
@@ -135,11 +135,11 @@ std::optional<ShaderId> PipelineManager::load(std::string_view name) {
   }
 
   log::debug("Shader {}: pass {}, blend {}, cull {}, depth {}, {} color "
-             "output(s), {} byte push constants",
+             "output(s), {} byte push constants, {} byte frame data",
              name, reflection.pass, static_cast<int>(reflection.blend),
              static_cast<int>(reflection.cull),
              static_cast<int>(reflection.depth), reflection.color_outputs,
-             reflection.push_constant_size);
+             reflection.push_constant_size, reflection.frame_data_size);
 
   shaders_.push_back({.reflection = reflection, .pipeline = pipeline});
   return ShaderId{.index = static_cast<uint32_t>(shaders_.size() - 1)};
@@ -169,11 +169,20 @@ bool PipelineManager::validate(const CompiledShader &shader,
     return false;
   }
   if (reflection.push_constant_size != 0 &&
-      reflection.push_constant_size != push_constant_size_) {
+      reflection.push_constant_size != shared_sizes_.push_constants) {
     log::error("Shader {}: push constant block is {} bytes, but the engine "
                "pushes {}. DrawPush in strafe/draw.slang and the C++ struct "
                "have drifted apart",
-               name, reflection.push_constant_size, push_constant_size_);
+               name, reflection.push_constant_size,
+               shared_sizes_.push_constants);
+    return false;
+  }
+  if (reflection.frame_data_size != 0 &&
+      reflection.frame_data_size != shared_sizes_.frame_data) {
+    log::error("Shader {}: FrameData is {} bytes, but the engine writes {}. "
+               "FrameData in strafe/frame.slang and the C++ struct have "
+               "drifted apart",
+               name, reflection.frame_data_size, shared_sizes_.frame_data);
     return false;
   }
   if (reflection.color_outputs != pass.color_formats.size()) {

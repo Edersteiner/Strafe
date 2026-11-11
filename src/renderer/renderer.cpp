@@ -26,21 +26,36 @@ namespace strafe::renderer {
 namespace {
 struct PushConstants {
   glm::mat4 transform = glm::mat4(1.0f);
-  glm::mat4 view_projection = glm::mat4(1.0f);
+  VkDeviceAddress frame_data = 0; // This frame's FrameData buffer.
   VkDeviceAddress vertex_buffer = 0;
   glm::vec4 color = glm::vec4(1.0f);
   uint32_t texture_index = 0; // Bindless sampled image slot.
   uint32_t sampler_index = 0; // A gfx::Sampler value.
 };
 
-// Must match the push constant block in shader.vert and shader.frag.
-static_assert(sizeof(PushConstants) == 160);
+static_assert(sizeof(PushConstants) == 104);
 static_assert(offsetof(PushConstants, transform) == 0);
-static_assert(offsetof(PushConstants, view_projection) == 64);
-static_assert(offsetof(PushConstants, vertex_buffer) == 128);
-static_assert(offsetof(PushConstants, color) == 136);
-static_assert(offsetof(PushConstants, texture_index) == 152);
-static_assert(offsetof(PushConstants, sampler_index) == 156);
+static_assert(offsetof(PushConstants, frame_data) == 64);
+static_assert(offsetof(PushConstants, vertex_buffer) == 72);
+static_assert(offsetof(PushConstants, color) == 80);
+static_assert(offsetof(PushConstants, texture_index) == 96);
+static_assert(offsetof(PushConstants, sampler_index) == 100);
+
+struct FrameData {
+  glm::mat4 view_projection = glm::mat4(1.0f);
+  glm::vec3 camera_position{0.0f};
+  float time = 0.0f;
+  glm::vec3 light_direction{0.0f, -1.0f, 0.0f};
+  glm::vec3 light_color{1.0f};
+  glm::vec3 ambient{0.0f};
+};
+
+static_assert(sizeof(FrameData) == 116);
+static_assert(offsetof(FrameData, camera_position) == 64);
+static_assert(offsetof(FrameData, time) == 76);
+static_assert(offsetof(FrameData, light_direction) == 80);
+static_assert(offsetof(FrameData, light_color) == 92);
+static_assert(offsetof(FrameData, ambient) == 104);
 
 } // namespace
 
@@ -56,6 +71,10 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
   }
   if (!bindless_.initialize(device)) {
     log::error("Failed to create the bindless descriptor set");
+    return false;
+  }
+  if (!createFrameBuffers()) {
+    log::error("Failed to create the per-frame buffers");
     return false;
   }
 
@@ -107,6 +126,15 @@ void Renderer::shutdown() {
   textures_.clear();
   default_texture_ = {};
 
+  for (gfx::Buffer &buffer : frame_buffers_) {
+    if (buffer.handle) {
+      frame_ring_->deferDestroy([gfx_device = device_, buffer] {
+        gfx::destroyBuffer(*gfx_device, buffer);
+      });
+    }
+    buffer = {};
+  }
+
   destroyDepthBuffer();
   // Both safe to destroy now, because the GPU is idle.
   bindless_.shutdown();
@@ -139,9 +167,24 @@ void Renderer::destroyDepthBuffer() {
   depth_image_ = {};
 }
 
+bool Renderer::createFrameBuffers() {
+  // One per frame in flight, so the CPU writes one while
+  // the GPU may still be reading the other.
+  for (gfx::Buffer &buffer : frame_buffers_) {
+    const std::optional<gfx::Buffer> created =
+        gfx::createBuffer(*device_, sizeof(FrameData), 0);
+    if (!created) {
+      return false;
+    }
+    buffer = *created;
+  }
+  return true;
+}
+
 bool Renderer::createPipelines() {
   if (!pipelines_.initialize(*device_, *frame_ring_, bindless_.layout(),
-                             sizeof(PushConstants),
+                             {.push_constants = sizeof(PushConstants),
+                              .frame_data = sizeof(FrameData)},
                              utils::basePath() + "shaders")) {
     return false;
   }
@@ -247,6 +290,16 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   const VkExtent2D extent = swapchain_->extent();
   gfx::CommandList cmd(ctx.cmd);
 
+  const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
+  const FrameData frame_data{.view_projection = desc.view_projection,
+                             .camera_position = desc.camera_position,
+                             .time = desc.time,
+                             .light_direction = desc.light.direction,
+                             .light_color = desc.light.color,
+                             .ambient = desc.light.ambient};
+  gfx::writeBuffer(*device_, frame_buffer,
+                   std::as_bytes(std::span(&frame_data, 1)));
+
   // Both targets are cleared, so their old contents are discarded. The depth
   // image is shared by every frame in flight, so it still waits for the
   // previous frame's depth writes.
@@ -294,7 +347,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       cmd.bindIndexBuffer(mesh.index_buffer);
       cmd.pushConstants(
           PushConstants{.transform = draw.transform,
-                        .view_projection = desc.view_projection,
+                        .frame_data = frame_buffer.address,
                         .vertex_buffer = mesh.vertex_buffer.address,
                         .color = draw.color,
                         .texture_index = texture.bindless_slot,

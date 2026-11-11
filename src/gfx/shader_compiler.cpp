@@ -155,13 +155,31 @@ uint32_t countColorOutputs(slang::EntryPointReflection *entry_point) {
   return count;
 }
 
-uint32_t pushConstantSize(slang::ProgramLayout *layout) {
+// The struct inside the push constant block, null when the shader has none.
+slang::TypeLayoutReflection *pushConstantType(slang::ProgramLayout *layout) {
   for (unsigned i = 0; i < layout->getParameterCount(); ++i) {
     slang::VariableLayoutReflection *parameter = layout->getParameterByIndex(i);
     if (parameter->getCategory() ==
         slang::ParameterCategory::PushConstantBuffer) {
+      return parameter->getTypeLayout()->getElementTypeLayout();
+    }
+  }
+  return nullptr;
+}
+
+// Size of the struct a pointer field points to, 0 when there is no such
+// pointer field.
+uint32_t pointeeSize(slang::TypeLayoutReflection *type, std::string_view field) {
+  if (!type) {
+    return 0;
+  }
+  for (unsigned i = 0; i < type->getFieldCount(); ++i) {
+    slang::VariableLayoutReflection *candidate = type->getFieldByIndex(i);
+    if (candidate->getName() && field == candidate->getName() &&
+        candidate->getTypeLayout()->getKind() ==
+            slang::TypeReflection::Kind::Pointer) {
       return static_cast<uint32_t>(
-          parameter->getTypeLayout()->getElementTypeLayout()->getSize());
+          candidate->getTypeLayout()->getElementTypeLayout()->getSize());
     }
   }
   return 0;
@@ -284,7 +302,10 @@ ShaderCompiler::compile(std::string_view module_name) {
   slang::ProgramLayout *layout = linked->getLayout();
   CompiledShader shader;
   shader.reflection.name = name;
-  shader.reflection.push_constant_size = pushConstantSize(layout);
+  slang::TypeLayoutReflection *push_type = pushConstantType(layout);
+  shader.reflection.push_constant_size =
+      push_type ? static_cast<uint32_t>(push_type->getSize()) : 0;
+  shader.reflection.frame_data_size = pointeeSize(push_type, "frame");
   std::unordered_map<std::string, std::string> seen_attributes;
 
   for (SlangInt32 i = 0; i < entry_point_count; ++i) {

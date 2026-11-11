@@ -18,7 +18,7 @@ Surface standardVertex(uint vertex_id) {
     let world_position = mul(g_draw.transform, float4(vertex.position, 1.0));
 
     Surface surface;
-    surface.position = mul(g_draw.view_projection, world_position);
+    surface.position = mul(frame().view_projection, world_position);
     surface.world_position = world_position.xyz;
     surface.world_normal = mul((float3x3)g_draw.transform, vertex.normal);
     surface.uv = vertex.uv;

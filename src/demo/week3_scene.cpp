@@ -71,6 +71,8 @@ void buildScene(renderer::FrameDesc &frame, const Scene &scene, float aspect) {
                         : renderer::orthographic(kOrthographicHeight, aspect,
                                                  kNearPlane, kFarPlane);
   frame.view_projection = projection * view;
+  frame.camera_position = kCameraPosition;
+  frame.time = scene.time;
 
   const glm::vec3 spin_axis = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f));
   drawMesh(frame, scene.redead,

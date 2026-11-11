@@ -1,6 +1,8 @@
 #pragma once
 
 #include "gfx/bindless.h"
+#include "gfx/buffer.h"
+#include "gfx/framering.h"
 #include "gfx/image.h"
 #include "gfx/pipeline_manager.h"
 #include "gfx/uploader.h"
@@ -11,6 +13,7 @@
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -18,9 +21,7 @@
 
 namespace strafe::gfx {
 class Device;
-class FrameRing;
 class Swapchain;
-struct FrameContext;
 } // namespace strafe::gfx
 
 namespace strafe::renderer {
@@ -71,6 +72,7 @@ private:
 
   bool createDepthBuffer(VkExtent2D extent);
   void destroyDepthBuffer();
+  bool createFrameBuffers();
   bool createPipelines();
   void deferDestroyMesh(const Mesh &mesh);
 
@@ -82,6 +84,9 @@ private:
   gfx::BindlessSet bindless_;
 
   gfx::Image depth_image_;
+
+  // FrameData for each frame in flight, indexed by FrameContext::frame_slot.
+  std::array<gfx::Buffer, gfx::FrameRing::kMaxFramesInFlight> frame_buffers_;
 
   gfx::PipelineManager pipelines_;
   // Todo:  draws pick their shader through their material.

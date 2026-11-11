@@ -19,8 +19,18 @@ struct DrawItem {
   gfx::Sampler sampler = gfx::Sampler::LinearRepeat;
 };
 
+struct DirectionalLight {
+  glm::vec3 direction{-0.4f, -1.0f, -0.6f};
+  glm::vec3 color{1.0f, 1.0f, 1.0f};
+  glm::vec3 ambient{0.12f, 0.13f, 0.16f};
+};
+
 struct FrameDesc {
   glm::mat4 view_projection = glm::mat4(1.0f);
+  glm::vec3 camera_position{0.0f};
+  DirectionalLight light;
+  // Seconds since startup, for animated shaders.
+  float time = 0.0f;
   std::vector<DrawItem> draws;
 };
 

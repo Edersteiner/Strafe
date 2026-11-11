@@ -32,6 +32,14 @@ struct PassDesc {
   VkFormat depth_format = VK_FORMAT_UNDEFINED;
 };
 
+// sizeof the C++ structs every shader shares with the engine.
+struct SharedStructSizes {
+  // The struct every draw pushes, DrawPush in strafe/draw.slang.
+  uint32_t push_constants = 0;
+  // What DrawPush::frame points to, FrameData in strafe/frame.slang.
+  uint32_t frame_data = 0;
+};
+
 // Turns Slang shaders into pipelines. Everything a pipeline needs comes from
 // the shader's reflection and attributes.
 //
@@ -49,11 +57,9 @@ public:
   PipelineManager(const PipelineManager &) = delete;
   PipelineManager &operator=(const PipelineManager &) = delete;
 
-  // push_constant_size is sizeof the C++ struct every draw pushes. A shader
-  // whose push constant block differs fails to load.
   bool initialize(Device &device, FrameRing &frame_ring,
                   VkDescriptorSetLayout bindless_layout,
-                  uint32_t push_constant_size, std::string shader_directory);
+                  SharedStructSizes shared_sizes, std::string shader_directory);
   // Destruction goes through the frame ring's deletion queue.
   void shutdown();
 
@@ -83,7 +89,7 @@ private:
   FrameRing *frame_ring_ = nullptr;
   ShaderCompiler compiler_;
   VkPipelineLayout layout_ = VK_NULL_HANDLE;
-  uint32_t push_constant_size_ = 0;
+  SharedStructSizes shared_sizes_;
 
   std::unordered_map<std::string, PassDesc> passes_;
   std::vector<Shader> shaders_;

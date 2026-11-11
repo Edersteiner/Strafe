@@ -1,5 +1,6 @@
 // Per-draw data and vertex fetching.
 import strafe.bindless;
+__exported import strafe.frame;
 
 // Must match renderer::Vertex byte for byte (scalar layout, 32 bytes).
 struct Vertex {
@@ -11,7 +12,7 @@ struct Vertex {
 // The one push constant block every shader shares. Must match PushConstants in renderer.cpp.
 struct DrawPush {
     float4x4 transform;
-    float4x4 view_projection;
+    FrameData* frame;
     Vertex* vertices;
     float4 color;
     Texture texture;
@@ -19,6 +20,11 @@ struct DrawPush {
 };
 
 [[vk::push_constant]] ConstantBuffer<DrawPush, ScalarDataLayout> g_draw;
+
+// The current frame's camera, light and time.
+FrameData frame() {
+    return *g_draw.frame;
+}
 
 // Vertices are pulled through the mesh's buffer address, so there is no
 // vertex input state. The id is the value read from the index buffer.
