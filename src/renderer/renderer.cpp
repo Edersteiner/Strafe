@@ -19,9 +19,6 @@
 #include <string>
 #include <vector>
 
-// Todo: replace shaderc and glsl with Slang.
-#include <shaderc/shaderc.hpp>
-
 #include <glm/glm.hpp>
 
 // This currently hardcodes pipelines and drawing
@@ -30,52 +27,6 @@
 namespace strafe::renderer {
 
 namespace {
-VkShaderModule createShaderModule(VkDevice device, const std::string &file_name,
-                                  shaderc_shader_kind kind) {
-  // Read shader file from disk
-  const std::string shader_path = utils::basePath() + "shaders/" + file_name;
-  const std::string src = utils::readTextFile(shader_path);
-  if (src.empty()) {
-    log::error("Specified shader file doesn't exist: {}", shader_path);
-    return nullptr;
-  }
-
-  // Compile shader to SPIR-V
-  log::info("Compiling shader: {}", shader_path);
-  shaderc::Compiler compiler;
-  shaderc::CompileOptions opts;
-  // This version of shaderc does not include shaderc_env_version_vulkan_1_4, so
-  // I use 1_3 instead. This does not matter since Vulkan 1.4 did not add any
-  // new features to SPIR-V. And I will be switching this for Slang anyways
-  // further down the road.
-  opts.SetTargetEnvironment(shaderc_target_env_vulkan,
-                            shaderc_env_version_vulkan_1_3);
-  opts.SetTargetSpirv(shaderc_spirv_version_1_6);
-  opts.SetOptimizationLevel(shaderc_optimization_level_performance);
-  shaderc::CompilationResult result =
-      compiler.CompileGlslToSpv(src, kind, file_name.c_str(), opts);
-
-  if (result.GetCompilationStatus() != shaderc_compilation_status_success) {
-    log::error("Shader Compilation Error: {}", result.GetErrorMessage());
-    return nullptr;
-  }
-
-  const size_t shader_size =
-      (result.end() - result.cbegin()) * sizeof(uint32_t);
-
-  VkShaderModuleCreateInfo module_create_info{
-      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = shader_size,
-      .pCode = result.cbegin()};
-
-  VkShaderModule shader_module = VK_NULL_HANDLE;
-  if (!VK_CHECK(vkCreateShaderModule(device, &module_create_info, nullptr,
-                                     &shader_module))) {
-    return nullptr;
-  }
-  return shader_module;
-}
-
 struct PushConstants {
   glm::mat4 transform = glm::mat4(1.0f);
   glm::mat4 view_projection = glm::mat4(1.0f);
@@ -175,18 +126,8 @@ void Renderer::shutdown() {
   textures_.clear();
   default_texture_ = {};
 
-  if (vert_shader_) {
-    frame_ring_->deferDestroy([device, handle = vert_shader_] {
-      vkDestroyShaderModule(device, handle, nullptr);
-    });
-    vert_shader_ = VK_NULL_HANDLE;
-  }
-  if (frag_shader_) {
-    frame_ring_->deferDestroy([device, handle = frag_shader_] {
-      vkDestroyShaderModule(device, handle, nullptr);
-    });
-    frag_shader_ = VK_NULL_HANDLE;
-  }
+  lit_shader_ = {};
+  shader_compiler_.shutdown();
 
   destroyDepthBuffer();
   // Both safe to destroy now, because the GPU is idle.
@@ -221,17 +162,14 @@ void Renderer::destroyDepthBuffer() {
 }
 
 bool Renderer::createShaders() {
-  const VkDevice device = device_->logicalDevice();
-  if (vert_shader_ =
-          createShaderModule(device, "shader.vert", shaderc_vertex_shader);
-      !vert_shader_) {
+  if (!shader_compiler_.initialize(utils::basePath() + "shaders")) {
     return false;
   }
-  if (frag_shader_ =
-          createShaderModule(device, "shader.frag", shaderc_fragment_shader);
-      !frag_shader_) {
+  std::optional<gfx::CompiledShader> lit = shader_compiler_.compile("lit");
+  if (!lit) {
     return false;
   }
+  lit_shader_ = std::move(*lit);
   return true;
 }
 
@@ -341,16 +279,23 @@ VkPipeline Renderer::createGraphicsPipeline() {
     return nullptr;
   }
 
-  const char *entry_point = "main";
-  std::vector<VkPipelineShaderStageCreateInfo> shader_stages{
-      {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-       .stage = VK_SHADER_STAGE_VERTEX_BIT,
-       .module = vert_shader_,
-       .pName = entry_point},
-      {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-       .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-       .module = frag_shader_,
-       .pName = entry_point}};
+  // maintenance5 lets each stage carry its SPIR-V directly, so there are no
+  // VkShaderModule objects to create and destroy.
+  std::vector<VkShaderModuleCreateInfo> module_infos;
+  module_infos.reserve(lit_shader_.stages.size());
+  std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
+  for (const gfx::CompiledStage &stage : lit_shader_.stages) {
+    module_infos.push_back(
+        {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+         .codeSize = stage.spirv.size() * sizeof(uint32_t),
+         .pCode = stage.spirv.data()});
+    shader_stages.push_back(
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+         .pNext = &module_infos.back(),
+         .stage = stage.stage,
+         .module = VK_NULL_HANDLE,
+         .pName = stage.entry_point.c_str()});
+  }
 
   // Vertex pulling
   VkPipelineVertexInputStateCreateInfo vert_input_info{

@@ -97,6 +97,8 @@ struct ObjFace {
   std::vector<ObjVertex> verts;
 };
 
+constexpr bool kDebugLog = false;
+
 } // namespace
 
 std::optional<MeshData> loadFromObj(const char *file_path) {
@@ -148,8 +150,10 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
       }
       vertex_positions.push_back(pos);
 
-      log::debug("v{} - X: {}, Y: {}, Z: {}", vertex_positions.size(), pos.x,
-                 pos.y, pos.z);
+      if (kDebugLog) {
+        log::debug("v{} - X: {}, Y: {}, Z: {}", vertex_positions.size(), pos.x,
+                   pos.y, pos.z);
+      }
     }
     // Vertex Texture Coordinates (UVs) - vt
     if (prefix == "vt") {
@@ -177,8 +181,10 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
       texcoord.y = 1 - texcoord.y;
       vertex_uvs.push_back(texcoord);
 
-      log::debug("vt{} - U: {}, V: {}", vertex_uvs.size(), texcoord.x,
-                 texcoord.y);
+      if (kDebugLog) {
+        log::debug("vt{} - U: {}, V: {}", vertex_uvs.size(), texcoord.x,
+                   texcoord.y);
+      }
     }
 
     // Vertex normals - vn
@@ -196,8 +202,10 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
       }
       vertex_normals.push_back(dir);
 
-      log::debug("vn{} - X: {}, Y: {}, Z: {}", vertex_normals.size(), dir.x,
-                 dir.y, dir.z);
+      if (kDebugLog) {
+        log::debug("vn{} - X: {}, Y: {}, Z: {}", vertex_normals.size(), dir.x,
+                   dir.y, dir.z);
+      }
     }
 
     // Parameter space vertices, ignored for now.
@@ -235,10 +243,13 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
         face.verts.push_back(vert);
       }
       faces.push_back(face);
-      log::debug("f{}:", faces.size());
-      for (ObjVertex vert : face.verts) {
-        log::debug("  -  pos: {}, uv: {}, nrm {}", vert.pos_idx, vert.uv_idx,
-                   vert.nrm_idx);
+
+      if (kDebugLog) {
+        log::debug("f{}:", faces.size());
+        for (ObjVertex vert : face.verts) {
+          log::debug("  -  pos: {}, uv: {}, nrm {}", vert.pos_idx, vert.uv_idx,
+                     vert.nrm_idx);
+        }
       }
     }
 

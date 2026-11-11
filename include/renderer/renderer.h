@@ -2,6 +2,7 @@
 
 #include "gfx/bindless.h"
 #include "gfx/image.h"
+#include "gfx/shader_compiler.h"
 #include "gfx/uploader.h"
 #include "renderer/frame_desc.h"
 #include "renderer/mesh.h"
@@ -83,8 +84,9 @@ private:
 
   gfx::Image depth_image_;
 
-  VkShaderModule vert_shader_ = VK_NULL_HANDLE;
-  VkShaderModule frag_shader_ = VK_NULL_HANDLE;
+  // Todo: move into the PipelineManager once it exists.
+  gfx::ShaderCompiler shader_compiler_;
+  gfx::CompiledShader lit_shader_;
 
   VkPipeline pipeline_ = VK_NULL_HANDLE;
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
