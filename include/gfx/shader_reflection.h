@@ -2,6 +2,7 @@
 
 #include "gfx/render_state.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -49,6 +50,9 @@ struct MaterialField {
   MaterialFieldType type = MaterialFieldType::Float;
   // Byte offset inside the material block, in scalar layout.
   uint32_t offset = 0;
+  // The field's initializer in the Slang struct, packed like the GPU reads
+  // it. Empty without one, which means zero.
+  std::vector<std::byte> default_value;
 };
 
 // The struct named by [Material("...")], as the GPU reads it.

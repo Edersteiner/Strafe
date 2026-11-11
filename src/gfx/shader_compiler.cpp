@@ -234,6 +234,40 @@ materialFieldType(slang::TypeLayoutReflection *type) {
   }
 }
 
+constexpr size_t fieldSize(MaterialFieldType type) {
+  switch (type) {
+  case MaterialFieldType::Float2:
+    return 8;
+  case MaterialFieldType::Float3:
+    return 12;
+  case MaterialFieldType::Float4:
+    return 16;
+  default:
+    return 4;
+  }
+}
+
+// The field's initializer, e.g. `float4 tint = float4(1.0);`. Empty when it
+// has none or Slang can't evaluate it.
+std::vector<std::byte> defaultValue(slang::VariableLayoutReflection *field,
+                                    MaterialFieldType type) {
+  slang::VariableReflection *variable = field->getVariable();
+  Slang::ComPtr<ISlangBlob> blob;
+  if (!variable ||
+      SLANG_FAILED(variable->getDefaultValueBlob(blob.writeRef())) || !blob) {
+    return {};
+  }
+  // Packed without padding, so for these types it is exactly the GPU bytes.
+  if (blob->getBufferSize() != fieldSize(type)) {
+    log::warn("Material field {} has a default of {} bytes, expected {}. "
+              "Ignoring it",
+              field->getName(), blob->getBufferSize(), fieldSize(type));
+    return {};
+  }
+  const auto *bytes = static_cast<const std::byte *>(blob->getBufferPointer());
+  return {bytes, bytes + blob->getBufferSize()};
+}
+
 // Fills reflection.material from the struct named by [Material("...")].
 bool reflectMaterial(slang::ProgramLayout *layout,
                      ShaderReflection &reflection) {
@@ -272,7 +306,8 @@ bool reflectMaterial(slang::ProgramLayout *layout,
     material.fields.push_back(
         {.name = field->getName(),
          .type = *field_type,
-         .offset = static_cast<uint32_t>(field->getOffset())});
+         .offset = static_cast<uint32_t>(field->getOffset()),
+         .default_value = defaultValue(field, *field_type)});
   }
   material.size = static_cast<uint32_t>(type_layout->getSize());
   return true;
@@ -361,14 +396,38 @@ ShaderCompiler::compile(std::string_view module_name) {
   // The module itself, then every entry point it defines.
   std::vector<Slang::ComPtr<slang::IComponentType>> components{
       Slang::ComPtr<slang::IComponentType>(module)};
-  const SlangInt32 entry_point_count = module->getDefinedEntryPointCount();
-  if (entry_point_count == 0) {
+  const SlangInt32 defined_count = module->getDefinedEntryPointCount();
+  if (defined_count == 0) {
     log::error("Shader {} has no [shader(...)] entry points", name);
     return std::nullopt;
   }
-  for (SlangInt32 i = 0; i < entry_point_count; ++i) {
+  bool has_vertex = false;
+  for (SlangInt32 i = 0; i < defined_count; ++i) {
     Slang::ComPtr<slang::IEntryPoint> entry_point;
     module->getDefinedEntryPoint(i, entry_point.writeRef());
+    slang::ProgramLayout *entry_layout = entry_point->getLayout();
+    if (entry_layout && entry_layout->getEntryPointCount() > 0 &&
+        entry_layout->getEntryPointByIndex(0)->getStage() ==
+            SLANG_STAGE_VERTEX) {
+      has_vertex = true;
+    }
+    components.emplace_back(entry_point.get());
+  }
+
+  // A shader without its own vertex stage gets the standard one, which
+  // outputs the Surface every fragment shader in the library takes.
+  if (!has_vertex) {
+    slang::IModule *standard = session->loadModule(
+        "strafe/standard_vertex", diagnostics.writeRef());
+    logDiagnostics(diagnostics, standard == nullptr);
+    Slang::ComPtr<slang::IEntryPoint> entry_point;
+    if (!standard ||
+        SLANG_FAILED(standard->findEntryPointByName(
+            "standardVertexMain", entry_point.writeRef()))) {
+      log::error("Shader {}: failed to load the standard vertex shader", name);
+      return std::nullopt;
+    }
+    components.emplace_back(Slang::ComPtr<slang::IComponentType>(standard));
     components.emplace_back(entry_point.get());
   }
 
@@ -401,6 +460,8 @@ ShaderCompiler::compile(std::string_view module_name) {
   shader.reflection.frame_data_size = pointeeSize(push_type, "frame");
   std::unordered_map<std::string, std::string> seen_attributes;
 
+  const auto entry_point_count =
+      static_cast<SlangInt32>(layout->getEntryPointCount());
   for (SlangInt32 i = 0; i < entry_point_count; ++i) {
     slang::EntryPointReflection *reflection = layout->getEntryPointByIndex(i);
     const std::optional<VkShaderStageFlagBits> stage =

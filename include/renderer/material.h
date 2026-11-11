@@ -53,8 +53,8 @@ public:
   // Destruction goes through the frame ring's deletion queue.
   void shutdown();
 
-  // Every field starts zeroed, except textures, which start as whatever
-  // TextureSlotFn returns for an invalid id.
+  // Fields start at their Slang initializer, or zero without one. Textures
+  // always start as whatever TextureSlotFn returns for an invalid id.
   MaterialId create(gfx::ShaderId shader);
 
   // Fails when material, parameter name or value is invalid.

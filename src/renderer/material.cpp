@@ -60,9 +60,8 @@ void MaterialTable::shutdown() {
   }
   for (gfx::Buffer &buffer : buffers_) {
     if (buffer.handle) {
-      frame_ring_->deferDestroy([device = device_, buffer] {
-        gfx::destroyBuffer(*device, buffer);
-      });
+      frame_ring_->deferDestroy(
+          [device = device_, buffer] { gfx::destroyBuffer(*device, buffer); });
     }
     buffer = {};
   }
@@ -79,11 +78,14 @@ MaterialId MaterialTable::create(gfx::ShaderId shader) {
                                       kMaterialAlignment)};
   data_.resize(material.offset + layout.size, std::byte{0});
 
-  // Slot 0 isn't necessarily the white texture, so textures are packed
-  // explicitly.
   for (const gfx::MaterialField &field : layout.fields) {
     if (field.type == gfx::MaterialFieldType::Texture) {
+      // Slot 0 isn't necessarily the white texture, so textures are packed
+      // explicitly, and a Slang initializer can't name a loaded texture.
       pack(material, field, TextureId{});
+    } else if (!field.default_value.empty()) {
+      std::memcpy(data_.data() + material.offset + field.offset,
+                  field.default_value.data(), field.default_value.size());
     }
   }
 
@@ -160,8 +162,7 @@ bool MaterialTable::upload(uint32_t frame_slot) {
 
   gfx::Buffer &buffer = buffers_[frame_slot];
   if (buffer.size < data_.size()) {
-    // Doubles, so a growing scene reallocates rarely. Materials are found
-    // through the address pushed each frame, so nothing holds the old one.
+    // Doubles in size, to avoid reallocating each frame.
     if (buffer.handle) {
       frame_ring_->deferDestroy([device = device_, old = buffer] {
         gfx::destroyBuffer(*device, old);

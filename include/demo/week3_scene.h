@@ -13,9 +13,10 @@ namespace strafe::demo {
 struct Scene {
   renderer::MeshId redead;
   renderer::TextureId redead_texture;
-  // Both use lit.slang: the plain texture, and a red see-through tint.
   renderer::MaterialId redead_material;
   renderer::MaterialId ghost_material;
+  renderer::MaterialId unlit_material;
+  renderer::MaterialId normals_material;
   bool perspective = true;
   float time = 0.0f;
 };

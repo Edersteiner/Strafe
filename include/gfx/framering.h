@@ -28,7 +28,7 @@ struct FrameContext {
 
 class FrameRing {
 public:
-  static constexpr uint32_t kMaxFramesInFlight = 2;
+  static constexpr uint32_t kMaxFramesInFlight = 3;
 
   FrameRing() = default;
   ~FrameRing() = default;

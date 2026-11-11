@@ -15,8 +15,11 @@ namespace strafe::demo {
 
 namespace {
 
-constexpr glm::vec3 kRestingRedeadPosition(-1.5f, -1.75f, 0.0f);
-constexpr glm::vec3 kGhostPosition(1.5f, -1.75f, 0.0f);
+// One redead per material, left to right.
+constexpr glm::vec3 kRestingRedeadPosition(-3.0f, -1.75f, 0.0f);
+constexpr glm::vec3 kGhostPosition(-1.0f, -1.75f, 0.0f);
+constexpr glm::vec3 kUnlitPosition(1.0f, -1.75f, 0.0f);
+constexpr glm::vec3 kNormalsPosition(3.0f, -1.75f, 0.0f);
 
 constexpr float kSpinSpeed = 1.0f; // Radians per second.
 
@@ -53,21 +56,31 @@ bool createSceneMeshes(renderer::Renderer &renderer, Scene &scene) {
   scene.redead = *redead;
 
   const std::optional<gfx::ShaderId> lit = renderer.loadShader("lit");
-  if (!lit) {
+  const std::optional<gfx::ShaderId> unlit = renderer.loadShader("unlit");
+  const std::optional<gfx::ShaderId> normals =
+      renderer.loadShader("normals_debug");
+  if (!lit || !unlit || !normals) {
     return false;
   }
   const std::optional<renderer::MaterialId> redead_material =
       renderer.createMaterial(*lit);
   const std::optional<renderer::MaterialId> ghost_material =
       renderer.createMaterial(*lit);
-  if (!redead_material || !ghost_material) {
+  const std::optional<renderer::MaterialId> unlit_material =
+      renderer.createMaterial(*unlit);
+  const std::optional<renderer::MaterialId> normals_material =
+      renderer.createMaterial(*normals);
+  if (!redead_material || !ghost_material || !unlit_material ||
+      !normals_material) {
     return false;
   }
   scene.redead_material = *redead_material;
   scene.ghost_material = *ghost_material;
+  scene.unlit_material = *unlit_material;
+  scene.normals_material = *normals_material;
 
-  renderer.setParam(scene.redead_material, "tint", glm::vec4(1.0f));
   renderer.setParam(scene.redead_material, "albedo", scene.redead_texture);
+  renderer.setParam(scene.unlit_material, "albedo", scene.redead_texture);
 
   renderer.setParam(scene.ghost_material, "tint",
                     glm::vec4(1.0f, 0.35f, 0.3f, 0.5f));
@@ -104,6 +117,9 @@ void buildScene(renderer::FrameDesc &frame, const Scene &scene, float aspect) {
   drawMesh(frame, scene.redead, scene.redead_material,
            spinning(kRestingRedeadPosition));
   drawMesh(frame, scene.redead, scene.ghost_material, spinning(kGhostPosition));
+  drawMesh(frame, scene.redead, scene.unlit_material, spinning(kUnlitPosition));
+  drawMesh(frame, scene.redead, scene.normals_material,
+           spinning(kNormalsPosition));
 }
 
 } // namespace strafe::demo
