@@ -15,7 +15,8 @@ namespace strafe::demo {
 
 namespace {
 
-constexpr glm::vec3 kRestingRedeadPosition(0.0f, -1.75f, 0.0f);
+constexpr glm::vec3 kRestingRedeadPosition(-1.5f, -1.75f, 0.0f);
+constexpr glm::vec3 kGhostPosition(1.5f, -1.75f, 0.0f);
 
 constexpr float kSpinSpeed = 1.0f; // Radians per second.
 
@@ -26,11 +27,9 @@ constexpr float kFarPlane = 100.0f;
 constexpr float kOrthographicHeight = 6.0f;
 
 void drawMesh(renderer::FrameDesc &frame, renderer::MeshId mesh,
-              const glm::mat4 &transform, renderer::TextureId texture) {
-  frame.draws.push_back({.mesh = mesh,
-                         .transform = transform,
-                         .color = glm::vec4(1.0f),
-                         .texture = texture});
+              renderer::MaterialId material, const glm::mat4 &transform) {
+  frame.draws.push_back(
+      {.mesh = mesh, .material = material, .transform = transform});
 }
 
 glm::mat4 translation(glm::vec3 position) {
@@ -51,8 +50,30 @@ bool createSceneMeshes(renderer::Renderer &renderer, Scene &scene) {
   if (!redead) {
     return false;
   }
-
   scene.redead = *redead;
+
+  const std::optional<gfx::ShaderId> lit = renderer.loadShader("lit");
+  if (!lit) {
+    return false;
+  }
+  const std::optional<renderer::MaterialId> redead_material =
+      renderer.createMaterial(*lit);
+  const std::optional<renderer::MaterialId> ghost_material =
+      renderer.createMaterial(*lit);
+  if (!redead_material || !ghost_material) {
+    return false;
+  }
+  scene.redead_material = *redead_material;
+  scene.ghost_material = *ghost_material;
+
+  renderer.setParam(scene.redead_material, "tint", glm::vec4(1.0f));
+  renderer.setParam(scene.redead_material, "albedo", scene.redead_texture);
+
+  renderer.setParam(scene.ghost_material, "tint",
+                    glm::vec4(1.0f, 0.35f, 0.3f, 0.5f));
+  renderer.setParam(scene.ghost_material, "albedo", scene.redead_texture);
+  renderer.setParam(scene.ghost_material, "sampler",
+                    gfx::Sampler::NearestRepeat);
   return true;
 }
 
@@ -75,11 +96,14 @@ void buildScene(renderer::FrameDesc &frame, const Scene &scene, float aspect) {
   frame.time = scene.time;
 
   const glm::vec3 spin_axis = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f));
-  drawMesh(frame, scene.redead,
-           glm::scale(glm::rotate(translation(kRestingRedeadPosition),
-                                  scene.time * kSpinSpeed, spin_axis),
-                      glm::vec3(0.025f)),
-           scene.redead_texture);
+  const auto spinning = [&](glm::vec3 position) {
+    return glm::scale(
+        glm::rotate(translation(position), scene.time * kSpinSpeed, spin_axis),
+        glm::vec3(0.025f));
+  };
+  drawMesh(frame, scene.redead, scene.redead_material,
+           spinning(kRestingRedeadPosition));
+  drawMesh(frame, scene.redead, scene.ghost_material, spinning(kGhostPosition));
 }
 
 } // namespace strafe::demo

@@ -7,6 +7,7 @@
 #include "gfx/pipeline_manager.h"
 #include "gfx/uploader.h"
 #include "renderer/frame_desc.h"
+#include "renderer/material.h"
 #include "renderer/mesh.h"
 #include "renderer/texture.h"
 
@@ -17,6 +18,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace strafe::gfx {
@@ -59,6 +61,15 @@ public:
   // 1x1 white, so an untextured draw keeps its plain color.
   TextureId defaultTexture() const { return default_texture_; }
 
+  // Compiles shaders/<name>.slang and builds its pipeline.
+  std::optional<gfx::ShaderId> loadShader(std::string_view name);
+
+  std::optional<MaterialId> createMaterial(gfx::ShaderId shader);
+
+  // Sets one material field by name.
+  bool setParam(MaterialId material, std::string_view name,
+                const MaterialParam &value);
+
   void render(const gfx::FrameContext &ctx, const FrameDesc &desc);
 
 private:
@@ -74,6 +85,7 @@ private:
   void destroyDepthBuffer();
   bool createFrameBuffers();
   bool createPipelines();
+  uint32_t textureSlot(TextureId id) const;
   void deferDestroyMesh(const Mesh &mesh);
 
   gfx::Device *device_ = nullptr;
@@ -89,8 +101,9 @@ private:
   std::array<gfx::Buffer, gfx::FrameRing::kMaxFramesInFlight> frame_buffers_;
 
   gfx::PipelineManager pipelines_;
-  // Todo:  draws pick their shader through their material.
-  gfx::ShaderId lit_shader_;
+  MaterialTable materials_;
+  // Indices into FrameDesc::draws in submission order.
+  std::vector<uint32_t> draw_order_;
 
   std::vector<Mesh> meshes_;
   std::vector<Texture> textures_;

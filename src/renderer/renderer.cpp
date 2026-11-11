@@ -7,9 +7,9 @@
 #include "gfx/device.h"
 #include "gfx/framering.h"
 #include "gfx/swapchain.h"
-#include "gfx/vk_check.h"
 
 #include "vulkan/vulkan_core.h"
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -27,19 +27,15 @@ namespace {
 struct PushConstants {
   glm::mat4 transform = glm::mat4(1.0f);
   VkDeviceAddress frame_data = 0; // This frame's FrameData buffer.
+  VkDeviceAddress material = 0;   // The draw's material block, or 0.
   VkDeviceAddress vertex_buffer = 0;
-  glm::vec4 color = glm::vec4(1.0f);
-  uint32_t texture_index = 0; // Bindless sampled image slot.
-  uint32_t sampler_index = 0; // A gfx::Sampler value.
 };
 
-static_assert(sizeof(PushConstants) == 104);
+static_assert(sizeof(PushConstants) == 88);
 static_assert(offsetof(PushConstants, transform) == 0);
 static_assert(offsetof(PushConstants, frame_data) == 64);
-static_assert(offsetof(PushConstants, vertex_buffer) == 72);
-static_assert(offsetof(PushConstants, color) == 80);
-static_assert(offsetof(PushConstants, texture_index) == 96);
-static_assert(offsetof(PushConstants, sampler_index) == 100);
+static_assert(offsetof(PushConstants, material) == 72);
+static_assert(offsetof(PushConstants, vertex_buffer) == 80);
 
 struct FrameData {
   glm::mat4 view_projection = glm::mat4(1.0f);
@@ -108,8 +104,8 @@ void Renderer::shutdown() {
     return;
   }
 
+  materials_.shutdown();
   pipelines_.shutdown();
-  lit_shader_ = {};
 
   for (const Mesh &mesh : meshes_) {
     deferDestroyMesh(mesh);
@@ -190,13 +186,34 @@ bool Renderer::createPipelines() {
   }
   pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()},
                                       .depth_format = kDepthFormat});
-
-  const std::optional<gfx::ShaderId> lit = pipelines_.load("lit");
-  if (!lit) {
-    return false;
-  }
-  lit_shader_ = *lit;
+  materials_.initialize(*device_, *frame_ring_, pipelines_,
+                        [this](TextureId id) { return textureSlot(id); });
   return true;
+}
+
+std::optional<gfx::ShaderId> Renderer::loadShader(std::string_view name) {
+  return pipelines_.load(name);
+}
+
+std::optional<MaterialId> Renderer::createMaterial(gfx::ShaderId shader) {
+  if (!shader.valid()) {
+    log::error("createMaterial needs a shader from loadShader");
+    return std::nullopt;
+  }
+  return materials_.create(shader);
+}
+
+bool Renderer::setParam(MaterialId material, std::string_view name,
+                        const MaterialParam &value) {
+  return materials_.set(material, name, value);
+}
+
+uint32_t Renderer::textureSlot(TextureId id) const {
+  // An invalid or stale id falls back to white instead of sampling an empty
+  // slot, which would be undefined behaviour on the GPU.
+  const TextureId resolved =
+      id.index < textures_.size() ? id : default_texture_;
+  return textures_[resolved.index].bindless_slot;
 }
 
 std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices,
@@ -299,6 +316,29 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
                              .ambient = desc.light.ambient};
   gfx::writeBuffer(*device_, frame_buffer,
                    std::as_bytes(std::span(&frame_data, 1)));
+  materials_.upload(ctx.frame_slot);
+
+  // Opaque draws first, then blended ones over them.
+  draw_order_.clear();
+  for (uint32_t i = 0; i < desc.draws.size(); ++i) {
+    const DrawItem &draw = desc.draws[i];
+    const bool valid =
+        draw.mesh.index < meshes_.size() && materials_.valid(draw.material);
+    assert(valid && "DrawItem needs a valid mesh and material");
+    if (valid) {
+      draw_order_.push_back(i);
+    }
+  }
+  const auto sort_key = [&](uint32_t draw_index) {
+    const gfx::ShaderId shader =
+        materials_.shader(desc.draws[draw_index].material);
+    const bool blended =
+        pipelines_.reflection(shader).blend != gfx::BlendMode::Opaque;
+    return std::pair(blended, shader.index);
+  };
+  std::stable_sort(
+      draw_order_.begin(), draw_order_.end(),
+      [&](uint32_t a, uint32_t b) { return sort_key(a) < sort_key(b); });
 
   // Both targets are cleared, so their old contents are discarded. The depth
   // image is shared by every frame in flight, so it still waits for the
@@ -327,31 +367,28 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   {
     cmd.setViewport(extent);
     cmd.setScissor(extent);
-    pipelines_.bind(cmd, lit_shader_);
-    cmd.bindBindlessSet(bindless_.set());
 
-    for (const DrawItem &draw : desc.draws) {
-      assert(draw.mesh.index < meshes_.size() && "DrawItem has no valid mesh");
-      if (draw.mesh.index >= meshes_.size()) {
-        continue;
+    gfx::ShaderId bound_shader;
+    for (const uint32_t draw_index : draw_order_) {
+      const DrawItem &draw = desc.draws[draw_index];
+      const gfx::ShaderId shader = materials_.shader(draw.material);
+      if (shader.index != bound_shader.index) {
+        pipelines_.bind(cmd, shader);
+        // Every pipeline shares the layout, so the set stays bound across
+        // later pipeline changes.
+        if (!bound_shader.valid()) {
+          cmd.bindBindlessSet(bindless_.set());
+        }
+        bound_shader = shader;
       }
+
       const Mesh &mesh = meshes_[draw.mesh.index];
-
-      // An invalid or stale id falls back to white instead of sampling an
-      // empty slot, which would be undefined behaviour on the GPU.
-      const TextureId texture_id = draw.texture.index < textures_.size()
-                                       ? draw.texture
-                                       : default_texture_;
-      const Texture &texture = textures_[texture_id.index];
-
       cmd.bindIndexBuffer(mesh.index_buffer);
-      cmd.pushConstants(
-          PushConstants{.transform = draw.transform,
-                        .frame_data = frame_buffer.address,
-                        .vertex_buffer = mesh.vertex_buffer.address,
-                        .color = draw.color,
-                        .texture_index = texture.bindless_slot,
-                        .sampler_index = static_cast<uint32_t>(draw.sampler)});
+      cmd.pushConstants(PushConstants{
+          .transform = draw.transform,
+          .frame_data = frame_buffer.address,
+          .material = materials_.address(draw.material, ctx.frame_slot),
+          .vertex_buffer = mesh.vertex_buffer.address});
       cmd.drawIndexed(mesh.index_count);
     }
   }

@@ -169,7 +169,8 @@ slang::TypeLayoutReflection *pushConstantType(slang::ProgramLayout *layout) {
 
 // Size of the struct a pointer field points to, 0 when there is no such
 // pointer field.
-uint32_t pointeeSize(slang::TypeLayoutReflection *type, std::string_view field) {
+uint32_t pointeeSize(slang::TypeLayoutReflection *type,
+                     std::string_view field) {
   if (!type) {
     return 0;
   }
@@ -183,6 +184,98 @@ uint32_t pointeeSize(slang::TypeLayoutReflection *type, std::string_view field) 
     }
   }
   return 0;
+}
+
+std::optional<MaterialFieldType>
+materialFieldType(slang::TypeLayoutReflection *type) {
+  using Kind = slang::TypeReflection::Kind;
+  switch (type->getKind()) {
+  case Kind::Scalar:
+    switch (type->getScalarType()) {
+    case slang::TypeReflection::ScalarType::Float32:
+      return MaterialFieldType::Float;
+    case slang::TypeReflection::ScalarType::Int32:
+      return MaterialFieldType::Int;
+    case slang::TypeReflection::ScalarType::UInt32:
+      return MaterialFieldType::UInt;
+    default:
+      return std::nullopt;
+    }
+  case Kind::Vector:
+    if (type->getElementTypeLayout()->getScalarType() !=
+        slang::TypeReflection::ScalarType::Float32) {
+      return std::nullopt;
+    }
+    switch (type->getElementCount()) {
+    case 2:
+      return MaterialFieldType::Float2;
+    case 3:
+      return MaterialFieldType::Float3;
+    case 4:
+      return MaterialFieldType::Float4;
+    default:
+      return std::nullopt;
+    }
+  case Kind::Struct: {
+    const char *name = type->getName();
+    if (!name) {
+      return std::nullopt;
+    }
+    if (std::string_view(name) == "Texture") {
+      return MaterialFieldType::Texture;
+    }
+    if (std::string_view(name) == "Sampler") {
+      return MaterialFieldType::Sampler;
+    }
+    return std::nullopt;
+  }
+  default:
+    return std::nullopt;
+  }
+}
+
+// Fills reflection.material from the struct named by [Material("...")].
+bool reflectMaterial(slang::ProgramLayout *layout,
+                     ShaderReflection &reflection) {
+  const std::string &type_name = reflection.material_type;
+  slang::TypeReflection *type = layout->findTypeByName(type_name.c_str());
+  if (!type) {
+    log::error("Shader {}: [Material(\"{}\")] names no type in the shader",
+               reflection.name, type_name);
+    return false;
+  }
+
+  const std::string pointer_name = "Ptr<" + type_name + ">";
+  slang::TypeReflection *pointer = layout->findTypeByName(pointer_name.c_str());
+  slang::TypeLayoutReflection *pointer_layout =
+      pointer ? layout->getTypeLayout(pointer) : nullptr;
+  slang::TypeLayoutReflection *type_layout =
+      pointer_layout ? pointer_layout->getElementTypeLayout() : nullptr;
+  if (!type_layout ||
+      type_layout->getKind() != slang::TypeReflection::Kind::Struct) {
+    log::error("Shader {}: [Material(\"{}\")] must name a struct",
+               reflection.name, type_name);
+    return false;
+  }
+
+  MaterialLayout &material = reflection.material;
+  for (unsigned i = 0; i < type_layout->getFieldCount(); ++i) {
+    slang::VariableLayoutReflection *field = type_layout->getFieldByIndex(i);
+    const std::optional<MaterialFieldType> field_type =
+        materialFieldType(field->getTypeLayout());
+    if (!field_type) {
+      log::error("Shader {}: {}.{} has a type materials don't support. Use "
+                 "float, float2-4, int, uint, Texture or Sampler",
+                 reflection.name, type_name, field->getName());
+      return false;
+    }
+    material.fields.push_back(
+        {.name = field->getName(),
+         .type = *field_type,
+         .offset = static_cast<uint32_t>(field->getOffset())});
+  }
+  material.size = static_cast<uint32_t>(type_layout->getSize());
+  return true;
 }
 
 } // namespace
@@ -338,6 +431,11 @@ ShaderCompiler::compile(std::string_view module_name) {
     std::memcpy(compiled.spirv.data(), code->getBufferPointer(),
                 compiled.spirv.size() * sizeof(uint32_t));
     shader.stages.push_back(std::move(compiled));
+  }
+
+  if (!shader.reflection.material_type.empty() &&
+      !reflectMaterial(layout, shader.reflection)) {
+    return std::nullopt;
   }
   return shader;
 }

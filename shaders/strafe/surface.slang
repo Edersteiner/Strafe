@@ -6,7 +6,6 @@ struct Surface {
     float3 world_position : WORLD_POSITION;
     float3 world_normal : WORLD_NORMAL;
     float2 uv : TEXCOORD0;
-    float3 color : COLOR0;
 };
 
 // Transforms the current vertex. Every shader without its own vertex logic
@@ -22,6 +21,5 @@ Surface standardVertex(uint vertex_id) {
     surface.world_position = world_position.xyz;
     surface.world_normal = mul((float3x3)g_draw.transform, vertex.normal);
     surface.uv = vertex.uv;
-    surface.color = g_draw.color.rgb;
     return surface;
 }

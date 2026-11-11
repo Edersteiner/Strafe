@@ -140,6 +140,10 @@ std::optional<ShaderId> PipelineManager::load(std::string_view name) {
              static_cast<int>(reflection.cull),
              static_cast<int>(reflection.depth), reflection.color_outputs,
              reflection.push_constant_size, reflection.frame_data_size);
+  for (const MaterialField &field : reflection.material.fields) {
+    log::debug("  {}.{}: {} at offset {}", reflection.material_type,
+               field.name, toString(field.type), field.offset);
+  }
 
   shaders_.push_back({.reflection = reflection, .pipeline = pipeline});
   return ShaderId{.index = static_cast<uint32_t>(shaders_.size() - 1)};

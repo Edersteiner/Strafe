@@ -4,8 +4,67 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace strafe::gfx {
+
+// The field types a material struct may use. Texture and Sampler are the
+// handle structs from strafe/bindless.slang, each a uint index.
+enum class MaterialFieldType {
+  Float,
+  Float2,
+  Float3,
+  Float4,
+  Int,
+  UInt,
+  Texture,
+  Sampler,
+};
+
+constexpr std::string_view toString(MaterialFieldType type) {
+  switch (type) {
+  case MaterialFieldType::Float:
+    return "float";
+  case MaterialFieldType::Float2:
+    return "float2";
+  case MaterialFieldType::Float3:
+    return "float3";
+  case MaterialFieldType::Float4:
+    return "float4";
+  case MaterialFieldType::Int:
+    return "int";
+  case MaterialFieldType::UInt:
+    return "uint";
+  case MaterialFieldType::Texture:
+    return "Texture";
+  case MaterialFieldType::Sampler:
+    return "Sampler";
+  }
+  return "unknown";
+}
+
+struct MaterialField {
+  std::string name;
+  MaterialFieldType type = MaterialFieldType::Float;
+  // Byte offset inside the material block, in scalar layout.
+  uint32_t offset = 0;
+};
+
+// The struct named by [Material("...")], as the GPU reads it.
+struct MaterialLayout {
+  std::vector<MaterialField> fields;
+  uint32_t size = 0;
+
+  const MaterialField *find(std::string_view name) const {
+    for (const MaterialField &field : fields) {
+      if (field.name == name) {
+        return &field;
+      }
+    }
+    return nullptr;
+  }
+};
 
 // Everything the engine needs to know about a compiled shader.
 struct ShaderReflection {
@@ -18,6 +77,8 @@ struct ShaderReflection {
   std::string pass = "forward";
   // [Material("...")], empty when the shader has no material parameters.
   std::string material_type;
+  // The layout of material_type, empty without one.
+  MaterialLayout material;
 
   // SV_Target outputs of the fragment entry point.
   uint32_t color_outputs = 0;

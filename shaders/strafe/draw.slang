@@ -1,5 +1,4 @@
 // Per-draw data and vertex fetching.
-import strafe.bindless;
 __exported import strafe.frame;
 
 // Must match renderer::Vertex byte for byte (scalar layout, 32 bytes).
@@ -9,14 +8,12 @@ struct Vertex {
     float3 normal;
 };
 
-// The one push constant block every shader shares. Must match PushConstants in renderer.cpp.
+// The one push constant block every shader shares.
 struct DrawPush {
     float4x4 transform;
     FrameData* frame;
+    void* material; // The draw's material block
     Vertex* vertices;
-    float4 color;
-    Texture texture;
-    Sampler sampler;
 };
 
 [[vk::push_constant]] ConstantBuffer<DrawPush, ScalarDataLayout> g_draw;
@@ -24,6 +21,12 @@ struct DrawPush {
 // The current frame's camera, light and time.
 FrameData frame() {
     return *g_draw.frame;
+}
+
+// The draw's material parameters. T must be the struct named by the entry
+// point's [Material("...")], which is the layout the engine packs.
+T material<T>() {
+    return *(T*)g_draw.material;
 }
 
 // Vertices are pulled through the mesh's buffer address, so there is no
