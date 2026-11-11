@@ -11,9 +11,7 @@ Surface vsMain(uint vertex_id : SV_VulkanVertexID) {
     return standardVertex(vertex_id);
 }
 
-[shader("fragment")]
-[Blend("opaque")]
-[Cull("front")]
+[shader("fragment"), Blend("opaque"), Cull("back")]
 float4 fsMain(Surface surface) : SV_Target {
     let normal = normalize(surface.world_normal);
     if (kShowNormals) {

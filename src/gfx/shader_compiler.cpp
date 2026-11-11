@@ -6,7 +6,9 @@
 #include <slang.h>
 
 #include <array>
+#include <cctype>
 #include <cstring>
+#include <unordered_map>
 
 namespace strafe::gfx {
 
@@ -40,32 +42,129 @@ std::optional<VkShaderStageFlagBits> toVkStage(SlangStage stage) {
   }
 }
 
-// Todo: turn this into actual reflection
-void logUserAttributes(slang::EntryPointReflection *entry_point) {
+// For now attributes only take one string as an argument
+// I have no plans to change this right now, but only time will tell.
+std::optional<std::string> stringArgument(slang::UserAttribute *attribute) {
+  if (attribute->getArgumentCount() != 1) {
+    return std::nullopt;
+  }
+  size_t size = 0;
+  const char *text = attribute->getArgumentValueString(0, &size);
+  if (!text) {
+    return std::nullopt;
+  }
+  return std::string(text, size);
+}
+
+// Reads the strafe attributes (defined in shaders/strafe/attributes.slang)
+bool readAttributes(slang::EntryPointReflection *entry_point,
+                    ShaderReflection &reflection,
+                    std::unordered_map<std::string, std::string> &seen) {
   slang::FunctionReflection *function = entry_point->getFunction();
   if (!function) {
-    return;
+    return true;
   }
+  const std::string_view shader = reflection.name;
+
   for (unsigned i = 0; i < function->getUserAttributeCount(); ++i) {
     slang::UserAttribute *attribute = function->getUserAttributeByIndex(i);
-    std::string arguments;
-    for (unsigned a = 0; a < attribute->getArgumentCount(); ++a) {
-      size_t size = 0;
-      if (const char *text = attribute->getArgumentValueString(a, &size)) {
-        arguments += std::string(text, size);
-      } else if (int value = 0;
-                 SLANG_SUCCEEDED(attribute->getArgumentValueInt(a, &value))) {
-        arguments += std::to_string(value);
-      } else {
-        arguments += '?';
-      }
-      if (a + 1 < attribute->getArgumentCount()) {
-        arguments += ", ";
-      }
+    const std::string name = attribute->getName();
+    const std::optional<std::string> value = stringArgument(attribute);
+    if (!value) {
+      log::error("Shader {}: [{}] on {} needs one string argument", shader,
+                 name, entry_point->getName());
+      return false;
     }
-    log::debug("  {} [{}({})]", entry_point->getName(), attribute->getName(),
-               arguments);
+    if (const auto it = seen.find(name); it != seen.end()) {
+      if (it->second != *value) {
+        log::error("Shader {}: conflicting [{}(\"{}\")] and [{}(\"{}\")]",
+                   shader, name, it->second, name, *value);
+        return false;
+      }
+      continue;
+    }
+    seen.emplace(name, *value);
+
+    bool valid = true;
+    if (name == "Blend") {
+      const std::optional<BlendMode> mode = parseBlendMode(*value);
+      valid = mode.has_value();
+      reflection.blend = mode.value_or(reflection.blend);
+    } else if (name == "Cull") {
+      const std::optional<CullMode> mode = parseCullMode(*value);
+      valid = mode.has_value();
+      reflection.cull = mode.value_or(reflection.cull);
+    } else if (name == "Depth") {
+      const std::optional<DepthMode> mode = parseDepthMode(*value);
+      valid = mode.has_value();
+      reflection.depth = mode.value_or(reflection.depth);
+    } else if (name == "Pass") {
+      reflection.pass = *value;
+    } else if (name == "Material") {
+      reflection.material_type = *value;
+    } else {
+      log::error("Shader {}: unknown attribute [{}]", shader, name);
+      return false;
+    }
+    if (!valid) {
+      log::error("Shader {}: [{}(\"{}\")] is not a valid value, see "
+                 "strafe/attributes.slang",
+                 shader, name, *value);
+      return false;
+    }
   }
+  return true;
+}
+
+bool isColorTarget(const char *semantic) {
+  if (!semantic) {
+    return false;
+  }
+  constexpr std::string_view kTarget = "SV_TARGET";
+  const std::string_view text = semantic;
+  if (text.size() < kTarget.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < kTarget.size(); ++i) {
+    if (std::toupper(static_cast<unsigned char>(text[i])) != kTarget[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// SV_Target outputs
+uint32_t countColorOutputs(slang::EntryPointReflection *entry_point) {
+  slang::VariableLayoutReflection *result = entry_point->getResultVarLayout();
+  if (!result) {
+    return 0;
+  }
+  if (isColorTarget(result->getSemanticName())) {
+    return 1;
+  }
+  slang::TypeLayoutReflection *type = result->getTypeLayout();
+  if (!type || type->getKind() != slang::TypeReflection::Kind::Struct) {
+    return 0;
+  }
+  uint32_t count = 0;
+  for (unsigned i = 0; i < type->getFieldCount(); ++i) {
+    if (isColorTarget(type->getFieldByIndex(i)->getSemanticName())) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+uint32_t pushConstantSize(slang::ProgramLayout *layout) {
+  for (unsigned i = 0; i < layout->getParameterCount(); ++i) {
+    slang::VariableLayoutReflection *parameter = layout->getParameterByIndex(i);
+    if (parameter->getCategory() ==
+        slang::ParameterCategory::PushConstantBuffer) {
+      return static_cast<uint32_t>(
+          parameter->getTypeLayout()->getElementTypeLayout()->getSize());
+    }
+  }
+  return 0;
 }
 
 } // namespace
@@ -184,6 +283,10 @@ ShaderCompiler::compile(std::string_view module_name) {
 
   slang::ProgramLayout *layout = linked->getLayout();
   CompiledShader shader;
+  shader.reflection.name = name;
+  shader.reflection.push_constant_size = pushConstantSize(layout);
+  std::unordered_map<std::string, std::string> seen_attributes;
+
   for (SlangInt32 i = 0; i < entry_point_count; ++i) {
     slang::EntryPointReflection *reflection = layout->getEntryPointByIndex(i);
     const std::optional<VkShaderStageFlagBits> stage =
@@ -193,7 +296,12 @@ ShaderCompiler::compile(std::string_view module_name) {
                  reflection->getName());
       return std::nullopt;
     }
-    logUserAttributes(reflection);
+    if (!readAttributes(reflection, shader.reflection, seen_attributes)) {
+      return std::nullopt;
+    }
+    if (*stage == VK_SHADER_STAGE_FRAGMENT_BIT) {
+      shader.reflection.color_outputs = countColorOutputs(reflection);
+    }
 
     Slang::ComPtr<slang::IBlob> code;
     const bool code_failed = SLANG_FAILED(linked->getEntryPointCode(

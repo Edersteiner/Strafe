@@ -2,6 +2,7 @@
 
 #include "gfx/buffer.h"
 #include "gfx/image.h"
+#include "gfx/render_state.h"
 #include "gfx/resource_state.h"
 
 #include <volk.h>
@@ -15,9 +16,10 @@
 
 namespace strafe::gfx {
 
-// Must match the push constant range in every pipeline layout.
+// The stages of the one push constant range in the shared pipeline layout.
+// vkCmdPushConstants must name exactly these.
 inline constexpr VkShaderStageFlags kPushConstantStages =
-    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT;
 
 // Cleared on load and stored. The image must be in COLOR_ATTACHMENT_OPTIMAL.
 struct ColorAttachment {
@@ -76,6 +78,8 @@ public:
   // Dynamic state, covering the whole target with a [0, 1] depth range.
   void setViewport(VkExtent2D extent);
   void setScissor(VkExtent2D extent);
+  void setCullMode(CullMode mode);
+  void setDepthMode(DepthMode mode);
 
   // Pipeline and data
   void bindPipeline(VkPipeline pipeline, VkPipelineLayout layout);

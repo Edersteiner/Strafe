@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gfx/shader_reflection.h"
+
 #include <volk.h>
 
 #include <cstdint>
@@ -22,6 +24,7 @@ struct CompiledStage {
 
 struct CompiledShader {
   std::vector<CompiledStage> stages;
+  ShaderReflection reflection;
 };
 
 // Compiles Slang shaders to SPIR-V. Shaders are found by module name under the
@@ -38,7 +41,8 @@ public:
   bool initialize(std::string search_path);
   void shutdown();
 
-  // Compiles every entry point in the module.
+  // Compiles every entry point in the module and fills in its reflection.
+  // Fails on unexpected attributes.
   std::optional<CompiledShader> compile(std::string_view module_name);
 
 private:

@@ -2,7 +2,7 @@
 
 #include "gfx/bindless.h"
 #include "gfx/image.h"
-#include "gfx/shader_compiler.h"
+#include "gfx/pipeline_manager.h"
 #include "gfx/uploader.h"
 #include "renderer/frame_desc.h"
 #include "renderer/mesh.h"
@@ -71,8 +71,7 @@ private:
 
   bool createDepthBuffer(VkExtent2D extent);
   void destroyDepthBuffer();
-  bool createShaders();
-  VkPipeline createGraphicsPipeline();
+  bool createPipelines();
   void deferDestroyMesh(const Mesh &mesh);
 
   gfx::Device *device_ = nullptr;
@@ -84,12 +83,9 @@ private:
 
   gfx::Image depth_image_;
 
-  // Todo: move into the PipelineManager once it exists.
-  gfx::ShaderCompiler shader_compiler_;
-  gfx::CompiledShader lit_shader_;
-
-  VkPipeline pipeline_ = VK_NULL_HANDLE;
-  VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
+  gfx::PipelineManager pipelines_;
+  // Todo:  draws pick their shader through their material.
+  gfx::ShaderId lit_shader_;
 
   std::vector<Mesh> meshes_;
   std::vector<Texture> textures_;

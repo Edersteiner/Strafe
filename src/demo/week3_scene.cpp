@@ -6,9 +6,6 @@
 #include "renderer/renderer.h"
 #include "renderer/texture_loader.h"
 
-#include <array>
-#include <cmath>
-#include <cstdint>
 #include <optional>
 #include <vector>
 

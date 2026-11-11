@@ -21,9 +21,6 @@
 
 #include <glm/glm.hpp>
 
-// This currently hardcodes pipelines and drawing
-// but this will eventually serve as the orchestrator
-// for other general purpose rendering systems.
 namespace strafe::renderer {
 
 namespace {
@@ -62,11 +59,10 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
     return false;
   }
 
-  const TextureData white{
-      .width = 1,
-      .height = 1,
-      .rgba = {std::byte{0xff}, std::byte{0xff}, std::byte{0xff},
-               std::byte{0xff}}};
+  const TextureData white{.width = 1,
+                          .height = 1,
+                          .rgba = {std::byte{0xff}, std::byte{0xff},
+                                   std::byte{0xff}, std::byte{0xff}}};
   if (const std::optional<TextureId> id =
           createTexture(white, ColorSpace::Srgb)) {
     default_texture_ = *id;
@@ -81,12 +77,8 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain,
     log::error("Failed to create depth buffer");
     return false;
   }
-  if (!createShaders()) {
-    log::error("Failed to create shaders");
-    return false;
-  }
-  if (pipeline_ = createGraphicsPipeline(); !pipeline_) {
-    log::error("Unable to initialize the graphics pipeline");
+  if (!createPipelines()) {
+    log::error("Failed to create the pipelines");
     return false;
   }
   return true;
@@ -97,19 +89,8 @@ void Renderer::shutdown() {
     return;
   }
 
-  const VkDevice device = device_->logicalDevice();
-  if (pipeline_layout_) {
-    frame_ring_->deferDestroy([device, handle = pipeline_layout_] {
-      vkDestroyPipelineLayout(device, handle, nullptr);
-    });
-    pipeline_layout_ = VK_NULL_HANDLE;
-  }
-  if (pipeline_) {
-    frame_ring_->deferDestroy([device, handle = pipeline_] {
-      vkDestroyPipeline(device, handle, nullptr);
-    });
-    pipeline_ = VK_NULL_HANDLE;
-  }
+  pipelines_.shutdown();
+  lit_shader_ = {};
 
   for (const Mesh &mesh : meshes_) {
     deferDestroyMesh(mesh);
@@ -125,9 +106,6 @@ void Renderer::shutdown() {
   }
   textures_.clear();
   default_texture_ = {};
-
-  lit_shader_ = {};
-  shader_compiler_.shutdown();
 
   destroyDepthBuffer();
   // Both safe to destroy now, because the GPU is idle.
@@ -161,15 +139,20 @@ void Renderer::destroyDepthBuffer() {
   depth_image_ = {};
 }
 
-bool Renderer::createShaders() {
-  if (!shader_compiler_.initialize(utils::basePath() + "shaders")) {
+bool Renderer::createPipelines() {
+  if (!pipelines_.initialize(*device_, *frame_ring_, bindless_.layout(),
+                             sizeof(PushConstants),
+                             utils::basePath() + "shaders")) {
     return false;
   }
-  std::optional<gfx::CompiledShader> lit = shader_compiler_.compile("lit");
+  pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()},
+                                      .depth_format = kDepthFormat});
+
+  const std::optional<gfx::ShaderId> lit = pipelines_.load("lit");
   if (!lit) {
     return false;
   }
-  lit_shader_ = std::move(*lit);
+  lit_shader_ = *lit;
   return true;
 }
 
@@ -260,133 +243,6 @@ void Renderer::deferDestroyMesh(const Mesh &mesh) {
   });
 }
 
-VkPipeline Renderer::createGraphicsPipeline() {
-  VkPushConstantRange push_constant_range{.stageFlags =
-                                              gfx::kPushConstantStages,
-                                          .offset = 0,
-                                          .size = sizeof(PushConstants)};
-
-  const VkDescriptorSetLayout bindless_layout = bindless_.layout();
-  VkPipelineLayoutCreateInfo pipeline_layout_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = 1,
-      .pSetLayouts = &bindless_layout,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &push_constant_range};
-  if (!VK_CHECK(vkCreatePipelineLayout(device_->logicalDevice(),
-                                       &pipeline_layout_info, nullptr,
-                                       &pipeline_layout_))) {
-    return nullptr;
-  }
-
-  // maintenance5 lets each stage carry its SPIR-V directly, so there are no
-  // VkShaderModule objects to create and destroy.
-  std::vector<VkShaderModuleCreateInfo> module_infos;
-  module_infos.reserve(lit_shader_.stages.size());
-  std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
-  for (const gfx::CompiledStage &stage : lit_shader_.stages) {
-    module_infos.push_back(
-        {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-         .codeSize = stage.spirv.size() * sizeof(uint32_t),
-         .pCode = stage.spirv.data()});
-    shader_stages.push_back(
-        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-         .pNext = &module_infos.back(),
-         .stage = stage.stage,
-         .module = VK_NULL_HANDLE,
-         .pName = stage.entry_point.c_str()});
-  }
-
-  // Vertex pulling
-  VkPipelineVertexInputStateCreateInfo vert_input_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-  };
-
-  // Input assembly
-  VkPipelineInputAssemblyStateCreateInfo input_assembly_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
-
-  // Reverse-Z: nearer fragments have greater depth
-  VkPipelineDepthStencilStateCreateInfo depth_stencil_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-      .depthTestEnable = VK_TRUE,
-      .depthWriteEnable = VK_TRUE,
-      .depthCompareOp = VK_COMPARE_OP_GREATER,
-      .stencilTestEnable = VK_FALSE};
-
-  VkPipelineViewportStateCreateInfo viewport_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-      .viewportCount = 1,
-      .pViewports = nullptr,
-      .scissorCount = 1,
-      .pScissors = nullptr};
-
-  VkPipelineRasterizationStateCreateInfo raster_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .polygonMode = VK_POLYGON_MODE_FILL,
-      .cullMode = VK_CULL_MODE_BACK_BIT,
-      .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-      .lineWidth = 1.0f,
-  };
-
-  VkPipelineMultisampleStateCreateInfo multi_sample_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-      .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT};
-
-  VkPipelineColorBlendAttachmentState attach_state{
-      .blendEnable = VK_FALSE,
-      .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
-
-  VkPipelineColorBlendStateCreateInfo blend_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-      .attachmentCount = 1,
-      .pAttachments = &attach_state};
-
-  std::vector<VkDynamicState> dynamic_state{VK_DYNAMIC_STATE_VIEWPORT,
-                                            VK_DYNAMIC_STATE_SCISSOR};
-
-  VkPipelineDynamicStateCreateInfo dynamic_state_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-      .dynamicStateCount = static_cast<uint32_t>(dynamic_state.size()),
-      .pDynamicStates = dynamic_state.data()};
-
-  const VkFormat color_format = swapchain_->format();
-
-  VkPipelineRenderingCreateInfo render_info{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-      .colorAttachmentCount = 1,
-      .pColorAttachmentFormats = &color_format,
-      .depthAttachmentFormat = kDepthFormat};
-
-  VkGraphicsPipelineCreateInfo pipeline_info{
-      .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .pNext = &render_info,
-      .stageCount = static_cast<uint32_t>(shader_stages.size()),
-      .pStages = shader_stages.data(),
-      .pVertexInputState = &vert_input_info,
-      .pInputAssemblyState = &input_assembly_info,
-      .pViewportState = &viewport_info,
-      .pRasterizationState = &raster_info,
-      .pMultisampleState = &multi_sample_info,
-      .pDepthStencilState = &depth_stencil_info,
-      .pColorBlendState = &blend_info,
-      .pDynamicState = &dynamic_state_info,
-      .layout = pipeline_layout_,
-      .renderPass = VK_NULL_HANDLE,
-  };
-
-  VkPipeline new_pipeline = VK_NULL_HANDLE;
-  if (!VK_CHECK(vkCreateGraphicsPipelines(device_->logicalDevice(), nullptr, 1,
-                                          &pipeline_info, nullptr,
-                                          &new_pipeline))) {
-    return nullptr;
-  }
-
-  return new_pipeline;
-}
-
 void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   const VkExtent2D extent = swapchain_->extent();
   gfx::CommandList cmd(ctx.cmd);
@@ -418,7 +274,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   {
     cmd.setViewport(extent);
     cmd.setScissor(extent);
-    cmd.bindPipeline(pipeline_, pipeline_layout_);
+    pipelines_.bind(cmd, lit_shader_);
     cmd.bindBindlessSet(bindless_.set());
 
     for (const DrawItem &draw : desc.draws) {
@@ -430,19 +286,19 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
 
       // An invalid or stale id falls back to white instead of sampling an
       // empty slot, which would be undefined behaviour on the GPU.
-      const TextureId texture_id =
-          draw.texture.index < textures_.size() ? draw.texture
-                                                : default_texture_;
+      const TextureId texture_id = draw.texture.index < textures_.size()
+                                       ? draw.texture
+                                       : default_texture_;
       const Texture &texture = textures_[texture_id.index];
 
       cmd.bindIndexBuffer(mesh.index_buffer);
-      cmd.pushConstants(PushConstants{
-          .transform = draw.transform,
-          .view_projection = desc.view_projection,
-          .vertex_buffer = mesh.vertex_buffer.address,
-          .color = draw.color,
-          .texture_index = texture.bindless_slot,
-          .sampler_index = static_cast<uint32_t>(draw.sampler)});
+      cmd.pushConstants(
+          PushConstants{.transform = draw.transform,
+                        .view_projection = desc.view_projection,
+                        .vertex_buffer = mesh.vertex_buffer.address,
+                        .color = draw.color,
+                        .texture_index = texture.bindless_slot,
+                        .sampler_index = static_cast<uint32_t>(draw.sampler)});
       cmd.drawIndexed(mesh.index_count);
     }
   }

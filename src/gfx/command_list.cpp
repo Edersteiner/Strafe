@@ -228,6 +228,29 @@ void CommandList::setScissor(VkExtent2D extent) {
   vkCmdSetScissor(buffer_, 0, 1, &scissor);
 }
 
+void CommandList::setCullMode(CullMode mode) {
+  VkCullModeFlags flags = VK_CULL_MODE_BACK_BIT;
+  switch (mode) {
+  case CullMode::Back:
+    flags = VK_CULL_MODE_BACK_BIT;
+    break;
+  case CullMode::Front:
+    flags = VK_CULL_MODE_FRONT_BIT;
+    break;
+  case CullMode::None:
+    flags = VK_CULL_MODE_NONE;
+    break;
+  }
+  vkCmdSetCullMode(buffer_, flags);
+}
+
+void CommandList::setDepthMode(DepthMode mode) {
+  vkCmdSetDepthTestEnable(buffer_, mode != DepthMode::Off);
+  vkCmdSetDepthWriteEnable(buffer_, mode == DepthMode::TestWrite);
+  // Reverse-Z: nearer fragments have greater depth.
+  vkCmdSetDepthCompareOp(buffer_, VK_COMPARE_OP_GREATER);
+}
+
 void CommandList::bindPipeline(VkPipeline pipeline, VkPipelineLayout layout) {
   assert(pipeline && layout);
   if (pipeline == bound_pipeline_) {
