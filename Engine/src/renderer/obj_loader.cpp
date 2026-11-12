@@ -30,6 +30,11 @@ bool tryParseFloat(std::string_view token, float &out) {
 }
 
 bool tryParseInt(std::string_view token, int &out) {
+  if (token.empty()) {
+    // Ignore empty tokens and set out to 0 but do not throw error.
+    out = 0;
+    return true;
+  }
   auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), out);
   if (ec == std::errc()) {
     return true;
@@ -296,9 +301,20 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
 
   for (const ObjFace &face : faces) {
     for (size_t i = 1; i + 1 < face.verts.size(); ++i) {
-      mesh.indices.push_back(emit(face.verts[0]));
-      mesh.indices.push_back(emit(face.verts[i]));
-      mesh.indices.push_back(emit(face.verts[i + 1]));
+      const uint32_t a = emit(face.verts[0]);
+      const uint32_t b = emit(face.verts[i]);
+      const uint32_t c = emit(face.verts[i + 1]);
+      // Faces without normals in the file get their flat face normal.
+      if (face.verts[0].nrm_idx < 0) {
+        const glm::vec3 normal = glm::normalize(
+            glm::cross(
+                mesh.vertices[b].position - mesh.vertices[a].position,
+                mesh.vertices[c].position - mesh.vertices[a].position));
+        for (const uint32_t index : {a, b, c}) {
+          mesh.vertices[index].normal = normal;
+        }
+      }
+      mesh.indices.insert(mesh.indices.end(), {a, b, c});
     }
   }
 

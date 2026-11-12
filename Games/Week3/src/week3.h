@@ -14,11 +14,19 @@ public:
 
 private:
   strafe::renderer::MeshId redead_;
+  strafe::renderer::MeshId grave_;
+  strafe::renderer::MeshId link_;
+  strafe::renderer::MeshId poe_;
+
   strafe::renderer::TextureId redead_texture_;
+  strafe::renderer::TextureId grave_texture_;
+  strafe::renderer::TextureId link_texture_;
+  strafe::renderer::TextureId poe_texture_;
+
   strafe::renderer::MaterialId redead_material_;
-  strafe::renderer::MaterialId ghost_material_;
-  strafe::renderer::MaterialId unlit_material_;
-  strafe::renderer::MaterialId normals_material_;
+  strafe::renderer::MaterialId grave_material_;
+  strafe::renderer::MaterialId link_material_;
+  strafe::renderer::MaterialId poe_material_;
 
   bool perspective_ = true;
   // Drives the spin.
