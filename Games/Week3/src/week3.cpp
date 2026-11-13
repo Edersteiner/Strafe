@@ -34,17 +34,17 @@ bool Week3::onInit(Engine &engine) {
   if (auto redead_data = renderer::loadFromObj("assets/models/redead.obj")) {
     redead_ = *renderer.createMesh(redead_data->vertices, redead_data->indices);
   }
-
   if (auto grave_data = renderer::loadFromObj("assets/models/HeartPieceGrave.obj")) {
     grave_ = *renderer.createMesh(grave_data->vertices, grave_data->indices);
   }
-
   if (auto link_data = renderer::loadFromObj("assets/models/link_v2.obj")) {
     link_ = *renderer.createMesh(link_data->vertices, link_data->indices);
   }
-
   if (auto poe_data = renderer::loadFromObj("assets/models/poe.obj")) {
     poe_ = *renderer.createMesh(poe_data->vertices, poe_data->indices);
+  }
+  if (auto poe_collector_data = renderer::loadFromObj("assets/models/poe_collector_sitting.obj")) {
+    poe_collector_ = *renderer.createMesh(poe_collector_data->vertices, poe_collector_data->indices);
   }
 
   if (auto tex = renderer::loadTexture("assets/textures/redead_grp.png")) {
@@ -60,17 +60,23 @@ bool Week3::onInit(Engine &engine) {
     poe_texture_ = *renderer.createTexture(*tex, renderer::ColorSpace::Srgb);
   }
 
+  if (auto tex = renderer::loadTexture("assets/textures/poe_collector_grp.png")) {
+    poe_collector_texture_ = *renderer.createTexture(*tex, renderer::ColorSpace::Srgb);
+  }
+
   const std::optional<gfx::ShaderId> lit = renderer.loadShader("lit");
 
   redead_material_ = *renderer.createMaterial(*lit);
   grave_material_ = *renderer.createMaterial(*lit);
   link_material_ = *renderer.createMaterial(*lit);
   poe_material_ = *renderer.createMaterial(*lit);
+  poe_collector_material_ = *renderer.createMaterial(*lit);
 
   renderer.setParam(redead_material_, "albedo", redead_texture_);
   renderer.setParam(grave_material_, "albedo", grave_texture_);
   renderer.setParam(link_material_, "albedo", link_texture_);
   renderer.setParam(poe_material_, "albedo", poe_texture_);
+  renderer.setParam(poe_collector_material_, "albedo", poe_collector_texture_);
   return true;
 }
 
@@ -117,4 +123,6 @@ void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
       frame, poe_, poe_material_,
       {.position = {5.0f, 0.5f * std::sin(time_ * 2.0f), 5.0f},
        .rotation = Quat::fromAxisAngle(poe_axis, radians(240.0f))});
+
+  drawMesh(frame, poe_collector_, poe_collector_material_, {.position = {0.0f, -1.3f, -1.0f}, .scale = Vec3(0.02f)});
 }
