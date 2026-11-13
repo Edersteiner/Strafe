@@ -326,8 +326,9 @@ bool Device::createLogicalDevice() {
   vkGetPhysicalDeviceFeatures2(physical_device_, &supported_features);
 
   if (!supported_features_14.maintenance5 || !supported_features_13.dynamicRendering ||
-      !supported_features_13.synchronization2 || !supported_features_12.timelineSemaphore ||
-      !supported_features_12.bufferDeviceAddress || !supported_features_12.scalarBlockLayout ||
+      !supported_features_13.shaderDemoteToHelperInvocation || !supported_features_13.synchronization2 ||
+      !supported_features_12.timelineSemaphore || !supported_features_12.bufferDeviceAddress ||
+      !supported_features_12.scalarBlockLayout ||
       // Bindless descriptors, see BindlessSet.
       !supported_features_12.runtimeDescriptorArray || !supported_features_12.descriptorBindingPartiallyBound ||
       !supported_features_12.descriptorBindingSampledImageUpdateAfterBind ||
@@ -344,6 +345,7 @@ bool Device::createLogicalDevice() {
   VkPhysicalDeviceVulkan13Features features_13{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
       .pNext = &features_14,
+      .shaderDemoteToHelperInvocation = VK_TRUE,
       .synchronization2 = VK_TRUE,
       .dynamicRendering = VK_TRUE};
   VkPhysicalDeviceVulkan12Features features_12{
