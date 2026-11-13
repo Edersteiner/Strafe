@@ -36,3 +36,6 @@ Going forward, I may not keep some parts that were developed for assesments, so 
 - `compile_commands.json` is regenerated on every build, so clangd works out of
   the box.
 - Formatting and linting follow `.clang-format` and `.clang-tidy`.
+- `xmake zed` writes Zed tasks (build and run) and debugger configs for every
+  app. `xmake new-app` runs it for you, so new apps show up in Zed on their own.
+  Run it once after cloning, since the files hold this machine's build paths.

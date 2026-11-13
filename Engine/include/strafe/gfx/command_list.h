@@ -1,13 +1,12 @@
 #pragma once
 
+#include "strafe/core/types/vec4.h"
 #include "strafe/gfx/buffer.h"
 #include "strafe/gfx/image.h"
 #include "strafe/gfx/render_state.h"
 #include "strafe/gfx/resource_state.h"
 
 #include <volk.h>
-
-#include <glm/glm.hpp>
 
 #include <cstdint>
 #include <optional>
@@ -23,7 +22,7 @@ inline constexpr VkShaderStageFlags kPushConstantStages = VK_SHADER_STAGE_ALL_GR
 // Cleared on load and stored. The image must be in COLOR_ATTACHMENT_OPTIMAL.
 struct ColorAttachment {
   VkImageView view = VK_NULL_HANDLE;
-  glm::vec4 clear_color{0.0f, 0.0f, 0.0f, 1.0f};
+  Vec4 clear_color{0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 // Cleared on load and discarded. The image must be in

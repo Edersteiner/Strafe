@@ -1,20 +1,19 @@
 #pragma once
 
+#include "strafe/core/types/vec2.h"
+#include "strafe/core/types/vec3.h"
 #include "strafe/gfx/buffer.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <vector>
 
-#include <glm/glm.hpp>
-
 namespace strafe::renderer {
 
 struct Vertex {
-  glm::vec3 position;
-  glm::vec2 uv;
-  glm::vec3 normal;
+  Vec3 position;
+  Vec2 uv;
+  Vec3 normal;
 };
 
 static_assert(std::is_trivially_copyable_v<Vertex>);

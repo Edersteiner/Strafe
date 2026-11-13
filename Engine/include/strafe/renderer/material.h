@@ -1,12 +1,13 @@
 #pragma once
 
+#include "strafe/core/types/vec2.h"
+#include "strafe/core/types/vec3.h"
+#include "strafe/core/types/vec4.h"
 #include "strafe/gfx/bindless.h"
 #include "strafe/gfx/buffer.h"
 #include "strafe/gfx/framering.h"
 #include "strafe/gfx/pipeline_manager.h"
 #include "strafe/renderer/texture.h"
-
-#include <glm/glm.hpp>
 
 #include <array>
 #include <cstddef>
@@ -31,7 +32,7 @@ struct MaterialId {
 };
 
 // Value from a shader material struct.
-using MaterialParam = std::variant<float, glm::vec2, glm::vec3, glm::vec4, int32_t, uint32_t, TextureId, gfx::Sampler>;
+using MaterialParam = std::variant<float, Vec2, Vec3, Vec4, int32_t, uint32_t, TextureId, gfx::Sampler>;
 
 // Every material's parameters, each packed into a block with the layout
 // reflected from its shader.

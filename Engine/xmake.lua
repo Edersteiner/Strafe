@@ -4,20 +4,19 @@ target("Strafe")
     set_languages("c++20", { public = true })
     add_files("src/**.cpp")
     add_includedirs("include", { public = true })
+    -- Private headers such as core/glm_interop.h, for engine sources only.
+    add_includedirs("src")
 
     -- Public because engine headers include them, so apps need them too.
-    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "libsdl3",
-                 "glm", { public = true })
+    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "libsdl3", { public = true })
     -- Only used inside the engine's own source files.
-    add_packages("slang", "stb")
+    add_packages("glm", "slang", "stb")
 
-    -- Public, so apps see the same Vulkan declarations and glm conventions as
-    -- the engine. An app built without GLM_FORCE_DEPTH_ZERO_TO_ONE would make
-    -- projection matrices for the wrong depth range.
+    -- Public, so apps see the same Vulkan declarations as the engine.
     -- volk loads the Vulkan loader at runtime, so nothing links against it.
     add_defines("VK_NO_PROTOTYPES", { public = true })
     -- Vulkan clip space uses a [0, 1] depth range.
-    add_defines("GLM_FORCE_DEPTH_ZERO_TO_ONE", { public = true })
+    add_defines("GLM_FORCE_DEPTH_ZERO_TO_ONE")
 
     if is_mode("debug") then
       add_defines("STRAFE_DEBUG", { public = true })
@@ -61,6 +60,8 @@ rule("strafe.app")
       cprint("${green}[+]${clear} Staged runtime files for %s", target:name())
     end)
 
+includes("zed.lua")
+
 -- xmake new-app <Name>
 --
 -- Copies the app template and replaces AppTemplateName and app_template_name
@@ -95,6 +96,7 @@ task("new-app")
       end
 
       cprint("${green}[+]${clear} Created Games/%s", name)
+      os.execv(os.programfile(), { "zed" })
       cprint("    Build and run it with: ${bright}xmake build %s && xmake run %s", name, name)
     end)
     set_menu {

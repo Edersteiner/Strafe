@@ -156,14 +156,14 @@ void CommandList::beginRendering(const RenderingDesc &desc) {
 
   std::array<VkRenderingAttachmentInfo, kMaxColorAttachments> colors{};
   for (std::size_t i = 0; i < desc.colors.size(); ++i) {
-    const glm::vec4 &clear = desc.colors[i].clear_color;
+    const Vec4 &clear = desc.colors[i].clear_color;
     colors[i] = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = desc.colors[i].view,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue{.color{.float32 = {clear.r, clear.g, clear.b, clear.a}}}};
+        .clearValue{.color{.float32 = {clear.x, clear.y, clear.z, clear.w}}}};
   }
 
   VkRenderingAttachmentInfo depth{};

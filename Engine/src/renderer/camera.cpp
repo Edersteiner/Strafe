@@ -1,5 +1,7 @@
 #include "strafe/renderer/camera.h"
 
+#include "core/glm_interop.h"
+
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace strafe::renderer {
@@ -9,18 +11,18 @@ namespace strafe::renderer {
 // more precision near 0, so reverse-Z spends it on distant geometry, where a
 // standard projection packs depth values tightly together.
 
-glm::mat4 perspective(float fov_y, float aspect, float near_plane, float far_plane) {
+Mat4 perspective(float fov_y, float aspect, float near_plane, float far_plane) {
   glm::mat4 projection = glm::perspectiveRH_ZO(fov_y, aspect, far_plane, near_plane);
   projection[1][1] *= -1.0f;
-  return projection;
+  return fromGlm(projection);
 }
 
-glm::mat4 orthographic(float height, float aspect, float near_plane, float far_plane) {
+Mat4 orthographic(float height, float aspect, float near_plane, float far_plane) {
   const float half_height = height / 2.0f;
   const float half_width = half_height * aspect;
   glm::mat4 projection = glm::orthoRH_ZO(-half_width, half_width, -half_height, half_height, far_plane, near_plane);
   projection[1][1] *= -1.0f;
-  return projection;
+  return fromGlm(projection);
 }
 
 } // namespace strafe::renderer

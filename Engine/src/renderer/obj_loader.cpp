@@ -3,6 +3,8 @@
 #include "strafe/core/log.h"
 #include "strafe/core/utils.h"
 
+#include "core/glm_interop.h"
+
 #include <array>
 #include <fstream>
 #include <iostream>
@@ -289,9 +291,9 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
     }
 
     Vertex v{};
-    v.position = vertex_positions[ov.pos_idx];
-    v.uv = ov.uv_idx >= 0 ? vertex_uvs[ov.uv_idx] : glm::vec2(0.0f);
-    v.normal = ov.nrm_idx >= 0 ? vertex_normals[ov.nrm_idx] : glm::vec3(0.0f);
+    v.position = fromGlm(vertex_positions[ov.pos_idx]);
+    v.uv = ov.uv_idx >= 0 ? fromGlm(vertex_uvs[ov.uv_idx]) : Vec2();
+    v.normal = ov.nrm_idx >= 0 ? fromGlm(vertex_normals[ov.nrm_idx]) : Vec3();
 
     const auto index = static_cast<uint32_t>(mesh.vertices.size());
     mesh.vertices.push_back(v);
@@ -306,8 +308,8 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
       const uint32_t c = emit(face.verts[i + 1]);
       // Faces without normals in the file get their flat face normal.
       if (face.verts[0].nrm_idx < 0) {
-        const glm::vec3 normal = glm::normalize(
-            glm::cross(
+        const Vec3 normal = normalize(
+            cross(
                 mesh.vertices[b].position - mesh.vertices[a].position,
                 mesh.vertices[c].position - mesh.vertices[a].position));
         for (const uint32_t index : {a, b, c}) {

@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include "core/glm_interop.h"
+
 #include <glm/glm.hpp>
 
 namespace strafe::renderer {
@@ -290,12 +292,12 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
 
   const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
   const FrameData frame_data{
-      .view_projection = desc.view_projection,
-      .camera_position = desc.camera_position,
+      .view_projection = toGlm(desc.view_projection),
+      .camera_position = toGlm(desc.camera_position),
       .time = desc.time,
-      .light_direction = desc.light.direction,
-      .light_color = desc.light.color,
-      .ambient = desc.light.ambient};
+      .light_direction = toGlm(desc.light.direction),
+      .light_color = toGlm(desc.light.color),
+      .ambient = toGlm(desc.light.ambient)};
   gfx::writeBuffer(*device_, frame_buffer, std::as_bytes(std::span(&frame_data, 1)));
   materials_.upload(ctx.frame_slot);
 
@@ -360,7 +362,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       cmd.bindIndexBuffer(mesh.index_buffer);
       cmd.pushConstants(
           PushConstants{
-              .transform = draw.transform,
+              .transform = toGlm(draw.transform.toMatrix()),
               .frame_data = frame_buffer.address,
               .material = materials_.address(draw.material, ctx.frame_slot),
               .vertex_buffer = mesh.vertex_buffer.address});

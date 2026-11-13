@@ -19,11 +19,11 @@ gfx::MaterialFieldType fieldType(const MaterialParam &value) {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, float>) {
           return gfx::MaterialFieldType::Float;
-        } else if constexpr (std::is_same_v<T, glm::vec2>) {
+        } else if constexpr (std::is_same_v<T, Vec2>) {
           return gfx::MaterialFieldType::Float2;
-        } else if constexpr (std::is_same_v<T, glm::vec3>) {
+        } else if constexpr (std::is_same_v<T, Vec3>) {
           return gfx::MaterialFieldType::Float3;
-        } else if constexpr (std::is_same_v<T, glm::vec4>) {
+        } else if constexpr (std::is_same_v<T, Vec4>) {
           return gfx::MaterialFieldType::Float4;
         } else if constexpr (std::is_same_v<T, int32_t>) {
           return gfx::MaterialFieldType::Int;
@@ -132,7 +132,6 @@ void MaterialTable::pack(const Material &material, const gfx::MaterialField &fie
           const auto index = static_cast<uint32_t>(v);
           std::memcpy(dst, &index, sizeof(index));
         } else {
-          // glm vectors are tightly packed floats, matching scalar layout.
           std::memcpy(dst, &v, sizeof(v));
         }
       },
