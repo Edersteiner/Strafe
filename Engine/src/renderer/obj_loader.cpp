@@ -5,13 +5,17 @@
 
 #include "core/glm_interop.h"
 
+#include "strafe/renderer/mesh.h"
 #include <array>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
+
+#include <tiny_obj_loader.h>
 
 namespace strafe::renderer {
 
@@ -100,11 +104,10 @@ struct ObjFace {
   std::vector<ObjVertex> verts;
 };
 
+constexpr bool kUseTinyObjLoader = true;
 constexpr bool kDebugLog = false;
 
-} // namespace
-
-std::optional<MeshData> loadFromObj(const char *file_path) {
+std::optional<MeshData> loadFromObjCustom(const char *file_path) {
   // Load file
   std::ifstream obj_file(utils::basePath() + file_path);
   if (!obj_file) {
@@ -308,10 +311,9 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
       const uint32_t c = emit(face.verts[i + 1]);
       // Faces without normals in the file get their flat face normal.
       if (face.verts[0].nrm_idx < 0) {
-        const Vec3 normal = normalize(
-            cross(
-                mesh.vertices[b].position - mesh.vertices[a].position,
-                mesh.vertices[c].position - mesh.vertices[a].position));
+        const Vec3 normal = normalize(cross(
+            mesh.vertices[b].position - mesh.vertices[a].position,
+            mesh.vertices[c].position - mesh.vertices[a].position));
         for (const uint32_t index : {a, b, c}) {
           mesh.vertices[index].normal = normal;
         }
@@ -323,6 +325,89 @@ std::optional<MeshData> loadFromObj(const char *file_path) {
   log::info("Loaded {}: {} vertices, {} triangles", file_path, mesh.vertices.size(), mesh.indices.size() / 3);
 
   return mesh;
+}
+
+std::optional<MeshData> loadFromObjTiny(const char *file_path) {
+  tinyobj::attrib_t attrib;
+
+  std::vector<tinyobj::shape_t> shapes;
+
+  std::string err;
+
+  std::string path = utils::basePath() + file_path;
+  tinyobj::LoadObj(&attrib, &shapes, nullptr, nullptr, &err, path.c_str(), nullptr);
+  if (!err.empty()) {
+    log::error("tinyobjloader error: {}", err);
+    return std::nullopt;
+  }
+
+  MeshData mesh{};
+
+  for (const auto &shape : shapes) {
+    // LoadObj triangulates by default
+    for (size_t i = 0; i + 2 < shape.mesh.indices.size(); i += 3) {
+      std::array<Vertex, 3> triangle{};
+      bool has_normals = true;
+
+      for (size_t corner = 0; corner < 3; ++corner) {
+        const tinyobj::index_t index = shape.mesh.indices[i + corner];
+        Vertex &vertex = triangle[corner];
+
+        vertex.position = Vec3{
+            attrib.vertices[3 * index.vertex_index + 0],
+            attrib.vertices[3 * index.vertex_index + 1],
+            attrib.vertices[3 * index.vertex_index + 2],
+        };
+
+        if (index.texcoord_index >= 0) {
+          vertex.uv = Vec2{
+              attrib.texcoords[2 * index.texcoord_index + 0],
+              1.0f - attrib.texcoords[2 * index.texcoord_index + 1], // Flip V for Vulkan
+          };
+        }
+
+        if (index.normal_index >= 0) {
+          vertex.normal = Vec3{
+              attrib.normals[3 * index.normal_index + 0],
+              attrib.normals[3 * index.normal_index + 1],
+              attrib.normals[3 * index.normal_index + 2],
+          };
+        } else {
+          has_normals = false;
+        }
+      }
+
+      // Generate normals for faces without one
+      if (!has_normals) {
+        const Vec3 normal =
+            normalize(cross(triangle[1].position - triangle[0].position, triangle[2].position - triangle[0].position));
+        for (Vertex &vertex : triangle) {
+          vertex.normal = normal;
+        }
+      }
+
+      for (const Vertex &vertex : triangle) {
+        mesh.indices.push_back(static_cast<uint32_t>(mesh.vertices.size()));
+        mesh.vertices.push_back(vertex);
+      }
+    }
+  }
+
+  log::info("Loaded {}: {} vertices, {} triangles", file_path, mesh.vertices.size(), mesh.indices.size() / 3);
+
+  return mesh;
+}
+
+} // namespace
+
+std::optional<MeshData> loadFromObj(const char *file_path) {
+  if (kUseTinyObjLoader) {
+    log::debug("Loading OBJ with tinyobjloader: {}", file_path);
+    return loadFromObjTiny(file_path);
+  } else {
+    log::debug("Loading OBJ with custom loader: {}", file_path);
+    return loadFromObjCustom(file_path);
+  }
 }
 
 } // namespace strafe::renderer

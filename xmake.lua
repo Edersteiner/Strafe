@@ -16,6 +16,7 @@ add_requires("libsdl3 3.4.16")
 add_requires("glm 1.0.3")
 add_requires("stb 2026.03.18")
 add_requires("slang v2026.16")
+add_requires("tinyobjloader");
 
 -- The engine library, then every app built on it.
 includes("Engine")
