@@ -325,12 +325,19 @@ std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_na
       slang::CompilerOptionEntry{
           .name = slang::CompilerOptionName::DisableWarning,
           .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "41012"}},
+
+// No optimization for now. I had issues with Slang trying to dynamically link to glslang and spriv-tools
+// on linux. The solution would be to tell the slang package to also compile them both, but that also
+// requires the libraries to be staged to each application individually, which I might do later.
+//
+// For now I just disabled the optimization. Vulkan will still handle most of the actual SPIR-V optimization.
+// I just lose the spirv-opt cleanup before the SPIR-V is ingested by vulkan.
 #ifdef STRAFE_DEBUG
       // Source level debugging in RenderDoc.
       int_option(slang::CompilerOptionName::DebugInformation, SLANG_DEBUG_INFO_LEVEL_STANDARD),
-      int_option(slang::CompilerOptionName::Optimization, SLANG_OPTIMIZATION_LEVEL_DEFAULT),
+      int_option(slang::CompilerOptionName::Optimization, SLANG_OPTIMIZATION_LEVEL_NONE),
 #else
-      int_option(slang::CompilerOptionName::Optimization, SLANG_OPTIMIZATION_LEVEL_HIGH),
+      int_option(slang::CompilerOptionName::Optimization, SLANG_OPTIMIZATION_LEVEL_NONE),
 #endif
   };
 
