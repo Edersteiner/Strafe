@@ -7,3 +7,7 @@ build/
 
 # clangd compile_commands.json
 compile_commands.json
+
+# Zed tasks and debug configs, generated per machine by xmake zed
+.zed/tasks.json
+.zed/debug.json

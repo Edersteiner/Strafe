@@ -4,7 +4,12 @@ Language: Cpp
 Standard: c++20
 
 IndentWidth: 2
-ColumnLimit: 80
+ColumnLimit: 120
+# Wrapped calls break after the opening paren and continue one step in from
+# the line's start, instead of aligning under the paren, which indents deeply.
+AlignAfterOpenBracket: AlwaysBreak
+ContinuationIndentWidth: 4
+AlignOperands: DontAlign
 PointerAlignment: Right
 ReferenceAlignment: Pointer
 AccessModifierOffset: -2
