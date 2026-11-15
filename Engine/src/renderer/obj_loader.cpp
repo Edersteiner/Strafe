@@ -104,7 +104,7 @@ struct ObjFace {
   std::vector<ObjVertex> verts;
 };
 
-constexpr bool kUseTinyObjLoader = true;
+constexpr bool kUseTinyObjLoader = false;
 constexpr bool kDebugLog = false;
 
 std::optional<MeshData> loadFromObjCustom(const char *file_path) {
@@ -159,6 +159,8 @@ std::optional<MeshData> loadFromObjCustom(const char *file_path) {
       if (kDebugLog) {
         log::debug("v{} - X: {}, Y: {}, Z: {}", vertex_positions.size(), pos.x, pos.y, pos.z);
       }
+
+      continue;
     }
     // Vertex Texture Coordinates (UVs) - vt
     if (prefix == "vt") {
@@ -186,6 +188,8 @@ std::optional<MeshData> loadFromObjCustom(const char *file_path) {
       if (kDebugLog) {
         log::debug("vt{} - U: {}, V: {}", vertex_uvs.size(), texcoord.x, texcoord.y);
       }
+
+      continue;
     }
 
     // Vertex normals - vn
@@ -206,6 +210,8 @@ std::optional<MeshData> loadFromObjCustom(const char *file_path) {
       if (kDebugLog) {
         log::debug("vn{} - X: {}, Y: {}, Z: {}", vertex_normals.size(), dir.x, dir.y, dir.z);
       }
+
+      continue;
     }
 
     // Parameter space vertices, ignored for now.
@@ -248,6 +254,8 @@ std::optional<MeshData> loadFromObjCustom(const char *file_path) {
           log::debug("  -  pos: {}, uv: {}, nrm {}", vert.pos_idx, vert.uv_idx, vert.nrm_idx);
         }
       }
+
+      continue;
     }
 
     // Group, ignored for now.
