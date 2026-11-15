@@ -190,7 +190,7 @@ bool Renderer::createPipelines() {
   materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textureSlot(id); });
 
 // Load debug view shaders in debug mode
-#if STRAFE_DEBUG
+#ifdef STRAFE_DEBUG
   wireframe_shader_ = *pipelines_.load("debug/wireframe");
   normals_shader_ = *pipelines_.load("debug/normals");
   drawid_shader_ = *pipelines_.load("debug/drawid");
@@ -380,7 +380,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       const DrawItem &draw = desc.draws[draw_index];
       const gfx::ShaderId shader = materials_.shader(draw.material);
       if (shader.index != bound_shader.index) {
-#if STRAFE_DEBUG
+#ifdef STRAFE_DEBUG
         if (debug_view_ == DebugView::Wireframe) {
           pipelines_.bind(cmd, wireframe_shader_);
         } else if (debug_view_ == DebugView::Normals) {

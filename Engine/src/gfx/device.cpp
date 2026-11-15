@@ -335,7 +335,7 @@ bool Device::createLogicalDevice() {
       !supported_features_12.descriptorBindingStorageImageUpdateAfterBind ||
       !supported_features_12.shaderSampledImageArrayNonUniformIndexing ||
       !supported_features_12.shaderStorageImageArrayNonUniformIndexing ||
-      !supported_features.features.samplerAnisotropy) {
+      !supported_features.features.samplerAnisotropy || !supported_features.features.fillModeNonSolid) {
     log::error("Physical device doesn't meet the feature requirements");
     return false;
   }
@@ -363,7 +363,10 @@ bool Device::createLogicalDevice() {
   VkPhysicalDeviceFeatures2 features{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
       .pNext = &features_12,
-      .features{.samplerAnisotropy = VK_TRUE}};
+      .features{
+          .fillModeNonSolid = VK_TRUE,
+          .samplerAnisotropy = VK_TRUE,
+      }};
 
   // request queues
   std::vector<float> queue_priorities{1.0f};
