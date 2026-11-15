@@ -267,6 +267,8 @@ bool reflectMaterial(slang::ProgramLayout *layout, ShaderReflection &reflection)
     return false;
   }
 
+  // Materials are accessed through a pointer in slang
+  // Thats why we need to get the layout for the pointer, then the layout for the struct it points to.
   const std::string pointer_name = "Ptr<" + type_name + ">";
   slang::TypeReflection *pointer = layout->findTypeByName(pointer_name.c_str());
   slang::TypeLayoutReflection *pointer_layout = pointer ? layout->getTypeLayout(pointer) : nullptr;
@@ -346,6 +348,7 @@ std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_na
   };
 
   std::vector<const char *> search_paths;
+  search_paths.reserve(search_paths_.size());
   for (const std::string &search_path : search_paths_) {
     search_paths.push_back(search_path.c_str());
   }
@@ -403,11 +406,12 @@ std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_na
       log::error("Shader {}: failed to load the standard vertex shader", name);
       return std::nullopt;
     }
-    components.emplace_back(Slang::ComPtr<slang::IComponentType>(standard));
+    components.emplace_back(standard);
     components.emplace_back(entry_point.get());
   }
 
   std::vector<slang::IComponentType *> raw_components;
+  raw_components.reserve(components.size());
   for (const auto &component : components) {
     raw_components.push_back(component.get());
   }
