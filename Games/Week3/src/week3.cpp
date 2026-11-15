@@ -20,6 +20,13 @@ constexpr float kNearPlane = 0.1f;
 constexpr float kFarPlane = 100.0f;
 constexpr float kOrthographicHeight = 6.0f;
 
+void cycleDebugView(strafe::renderer::Renderer &renderer) {
+  using DebugView = strafe::renderer::DebugView;
+  const DebugView current = renderer.debugView();
+  const DebugView next = static_cast<DebugView>((static_cast<int>(current) + 1) % static_cast<int>(DebugView::Count));
+  renderer.setDebugView(next);
+}
+
 } // namespace
 
 bool Week3::onInit(Engine &engine) {
@@ -64,6 +71,9 @@ bool Week3::onInit(Engine &engine) {
 void Week3::onEvent(Engine &engine, const SDL_Event &event) {
   if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_P) {
     perspective_ = !perspective_;
+  }
+  if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_D) {
+    cycleDebugView(engine.renderer());
   }
 }
 

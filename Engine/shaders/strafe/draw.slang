@@ -14,6 +14,8 @@ struct DrawPush {
     FrameData* frame;
     void* material; // The draw's material block
     Vertex* vertices;
+    uint32_t draw_id;
+    uint32_t padding; // Pad to 16 bytes for alignment
 };
 
 [[vk::push_constant]] ConstantBuffer<DrawPush, ScalarDataLayout> g_draw;
@@ -33,4 +35,8 @@ T material<T>() {
 // vertex input state. The id is the value read from the index buffer.
 Vertex fetchVertex(uint vertex_id) {
     return g_draw.vertices[vertex_id];
+}
+
+uint32_t drawId() {
+		return g_draw.draw_id;
 }
