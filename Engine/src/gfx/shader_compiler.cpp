@@ -94,6 +94,10 @@ bool readAttributes(
       const std::optional<DepthMode> mode = parseDepthMode(*value);
       valid = mode.has_value();
       reflection.depth = mode.value_or(reflection.depth);
+    } else if (name == "Polygon") {
+      const std::optional<PolygonMode> mode = parsePolygonMode(*value);
+      valid = mode.has_value();
+      reflection.polygon = mode.value_or(reflection.polygon);
     } else if (name == "Pass") {
       reflection.pass = *value;
     } else if (name == "Material") {

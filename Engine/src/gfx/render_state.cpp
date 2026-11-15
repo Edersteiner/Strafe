@@ -1,4 +1,5 @@
 #include "strafe/gfx/render_state.h"
+#include <optional>
 
 namespace strafe::gfx {
 
@@ -40,5 +41,18 @@ std::optional<DepthMode> parseDepthMode(std::string_view text) {
   }
   return std::nullopt;
 }
+
+std::optional<PolygonMode> parsePolygonMode(std::string_view text) {
+  if (text == "fill") {
+    return PolygonMode::Fill;
+  }
+  if (text == "line") {
+    return PolygonMode::Line;
+  }
+  if (text == "point") {
+    return PolygonMode::Point;
+  }
+  return std::nullopt;
+};
 
 } // namespace strafe::gfx

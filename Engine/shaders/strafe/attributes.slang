@@ -20,6 +20,12 @@ struct DepthAttribute {
     string mode;
 };
 
+// Polygon rasterization mode: "fill" (default), "line" or "point".
+[__AttributeUsage(_AttributeTargets.Function)]
+struct PolygonAttribute {
+		string mode;
+}
+
 // The render pass whose target formats the pipeline is built for:
 // "forward" (default).
 [__AttributeUsage(_AttributeTargets.Function)]

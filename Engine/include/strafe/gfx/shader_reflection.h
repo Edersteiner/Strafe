@@ -78,6 +78,7 @@ struct ShaderReflection {
   BlendMode blend = BlendMode::Opaque;
   CullMode cull = CullMode::Back;
   DepthMode depth = DepthMode::TestWrite;
+  PolygonMode polygon = PolygonMode::Fill;
   std::string pass = "forward";
   // [Material("...")], empty when the shader has no material parameters.
   std::string material_type;

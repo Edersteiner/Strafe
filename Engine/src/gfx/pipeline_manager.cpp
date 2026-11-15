@@ -6,6 +6,7 @@
 #include "strafe/gfx/framering.h"
 #include "strafe/gfx/vk_check.h"
 
+#include "vulkan/vulkan_core.h"
 #include <array>
 #include <cassert>
 
@@ -41,6 +42,19 @@ VkPipelineColorBlendAttachmentState blendState(BlendMode mode) {
     break;
   }
   return state;
+}
+
+VkPolygonMode polygonMode(PolygonMode mode) {
+  switch (mode) {
+  case PolygonMode::Fill:
+    return VK_POLYGON_MODE_FILL;
+  case PolygonMode::Line:
+    return VK_POLYGON_MODE_LINE;
+  case PolygonMode::Point:
+    return VK_POLYGON_MODE_POINT;
+  }
+  assert(false && "Unknown PolygonMode");
+  return VK_POLYGON_MODE_FILL;
 }
 
 bool hasStage(const CompiledShader &shader, VkShaderStageFlagBits stage) {
@@ -210,7 +224,7 @@ VkPipeline PipelineManager::createPipeline(const CompiledShader &shader, const P
   // cullMode is dynamic, set by bind().
   const VkPipelineRasterizationStateCreateInfo raster{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .polygonMode = VK_POLYGON_MODE_FILL,
+      .polygonMode = polygonMode(shader.reflection.polygon),
       .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
       .lineWidth = 1.0f};
   const VkPipelineMultisampleStateCreateInfo multisample{
