@@ -4,7 +4,6 @@
 #include "strafe/engine.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
-#include "strafe/renderer/obj_loader.h"
 #include "strafe/renderer/renderer.h"
 #include "strafe/renderer/texture_loader.h"
 
@@ -21,34 +20,10 @@ constexpr float kNearPlane = 0.1f;
 constexpr float kFarPlane = 100.0f;
 constexpr float kOrthographicHeight = 6.0f;
 
-void drawMesh(
-    renderer::FrameDesc &frame, renderer::MeshId mesh, renderer::MaterialId material, const Transform &transform) {
-  frame.draws.push_back({.mesh = mesh, .material = material, .transform = transform});
-}
-
 } // namespace
 
 bool Week3::onInit(Engine &engine) {
   renderer::Renderer &renderer = engine.renderer();
-
-  if (auto redead_data = renderer::loadFromObj("assets/models/redead.obj")) {
-    redead_ = *renderer.createMesh(redead_data->vertices, redead_data->indices);
-  }
-  if (auto grave_data = renderer::loadFromObj("assets/models/HeartPieceGrave.obj")) {
-    grave_ = *renderer.createMesh(grave_data->vertices, grave_data->indices);
-  }
-  if (auto link_data = renderer::loadFromObj("assets/models/link_v2.obj")) {
-    link_ = *renderer.createMesh(link_data->vertices, link_data->indices);
-  }
-  if (auto poe_data = renderer::loadFromObj("assets/models/poe.obj")) {
-    poe_ = *renderer.createMesh(poe_data->vertices, poe_data->indices);
-  }
-  if (auto poe_collector_data = renderer::loadFromObj("assets/models/poe_collector_sitting.obj")) {
-    poe_collector_ = *renderer.createMesh(poe_collector_data->vertices, poe_collector_data->indices);
-  }
-  if (auto suzanne_data = renderer::loadFromObj("assets/models/suzanne.obj")) {
-    suzanne_ = *renderer.createMesh(suzanne_data->vertices, suzanne_data->indices);
-  }
 
   if (auto tex = renderer::loadTexture("assets/textures/redead_grp.png")) {
     redead_texture_ = *renderer.createTexture(*tex, renderer::ColorSpace::Srgb);
@@ -111,29 +86,40 @@ void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
   frame.light.ambient = Vec3(0.1f, 0.01f, 0.01f);
   frame.light.color = Vec3(0.95f, 0.2f, 0.5f);
 
-  drawMesh(
-      frame, redead_, redead_material_,
+  renderer::Renderer &renderer = engine.renderer();
+
+  renderer.renderObj(
+      frame, "assets/models/redead.obj", redead_material_,
       {.position = Vec3(-3.0f, -1.0f, 0.0f),
        .rotation = Quat::fromAxisAngle({0.0f, 1.0f, 0.0f}, radians(45.0f)),
        .scale = Vec3(0.015f)});
-  drawMesh(frame, grave_, grave_material_, {.position = {0.0f, 0.0f, 10.0f}, .scale = Vec3(5.0f)});
-  drawMesh(
-      frame, link_, link_material_,
+  renderer.renderObj(
+      frame, "assets/models/redead.obj", redead_material_,
+      {.position = Vec3(3.0f, -1.0f, 0.0f),
+       .rotation = Quat::fromAxisAngle({0.0f, 1.0f, 0.0f}, radians(-45.0f)),
+       .scale = Vec3(0.015f)});
+
+  renderer.renderObj(
+      frame, "assets/models/HeartPieceGrave.obj", grave_material_,
+      {.position = {0.0f, 0.0f, 10.0f}, .scale = Vec3(5.0f)});
+
+  renderer.renderObj(
+      frame, "assets/models/link_v2.obj", link_material_,
       {.position = {0.0f, -1.9f, 2.0f},
        .rotation = Quat::fromAxisAngle({0.0f, -1.0f, 0.0f}, radians(45.0f)),
        .scale = Vec3(0.5f)});
 
-  // A tilted, wobbling spin axis. fromAxisAngle normalizes it.
   const Vec3 poe_axis(0.1f * std::sin(time_), 1.0f, 0.1f * std::sin(time_ * 4.0f));
-  drawMesh(
-      frame, poe_, poe_material_,
+  renderer.renderObj(
+      frame, "assets/models/poe.obj", poe_material_,
       {.position = {5.0f, 0.5f * std::sin(time_ * 2.0f), 5.0f},
        .rotation = Quat::fromAxisAngle(poe_axis, radians(240.0f))});
 
-  drawMesh(frame, poe_collector_, poe_collector_material_, {.position = {0.0f, -1.3f, -1.0f}, .scale = Vec3(0.02f)});
+  renderer.renderObj(
+      frame, "assets/models/poe_collector_sitting.obj", poe_collector_material_,
+      {.position = {0.0f, -1.3f, -1.0f}, .scale = Vec3(0.02f)});
 
-  // On the raised platform in front of the big gravestone, turned to face the middle.
-  drawMesh(
-      frame, suzanne_, suzanne_material_,
+  renderer.renderObj(
+      frame, "assets/models/suzanne.obj", suzanne_material_,
       {.position = {-3.0f, 2.2f, 20.0f}, .rotation = Quat::fromAxisAngle({0.0f, 1.0f, 0.0f}, radians(180.0f))});
 }

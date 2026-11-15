@@ -2,7 +2,6 @@
 
 #include "strafe/app.h"
 #include "strafe/renderer/material.h"
-#include "strafe/renderer/mesh.h"
 #include "strafe/renderer/texture.h"
 
 class Week3 : public strafe::App {
@@ -13,13 +12,6 @@ public:
   void onRender(strafe::Engine &engine, strafe::renderer::FrameDesc &frame) override;
 
 private:
-  strafe::renderer::MeshId redead_;
-  strafe::renderer::MeshId grave_;
-  strafe::renderer::MeshId link_;
-  strafe::renderer::MeshId poe_;
-  strafe::renderer::MeshId poe_collector_;
-  strafe::renderer::MeshId suzanne_;
-
   strafe::renderer::TextureId redead_texture_;
   strafe::renderer::TextureId grave_texture_;
   strafe::renderer::TextureId link_texture_;

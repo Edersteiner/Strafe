@@ -15,7 +15,6 @@ enum class Level : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
 
 // Calls below this level compile to nothing.
 #ifdef STRAFE_DEBUG
-
 inline constexpr Level kCompiledLevel = Level::Trace;
 #else
 inline constexpr Level kCompiledLevel = Level::Info;

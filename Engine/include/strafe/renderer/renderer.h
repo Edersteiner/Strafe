@@ -18,7 +18,9 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace strafe::gfx {
@@ -66,6 +68,9 @@ public:
   // Sets one material field by name.
   bool setParam(MaterialId material, std::string_view name, const MaterialParam &value);
 
+  // Adds a draw of the OBJ file at path. Caches loaded files and reuses them.
+  bool renderObj(FrameDesc &frame, const std::string &path, MaterialId material, const Transform &transform);
+
   void render(const gfx::FrameContext &ctx, const FrameDesc &desc);
 
 private:
@@ -102,6 +107,8 @@ private:
   std::vector<uint32_t> draw_order_;
 
   std::vector<Mesh> meshes_;
+  // renderObj cache
+  std::unordered_map<std::string, MeshId> obj_meshes_;
   std::vector<Texture> textures_;
   TextureId default_texture_;
 };

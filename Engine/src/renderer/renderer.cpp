@@ -7,6 +7,7 @@
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
 #include "strafe/gfx/swapchain.h"
+#include "strafe/renderer/obj_loader.h"
 
 #include "vulkan/vulkan_core.h"
 #include <algorithm>
@@ -109,6 +110,7 @@ void Renderer::shutdown() {
     deferDestroyMesh(mesh);
   }
   meshes_.clear();
+  obj_meshes_.clear();
 
   // The whole bindless set goes away below, so the slots aren't freed one by
   // one.
@@ -249,6 +251,23 @@ std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices, std
 
   meshes_.push_back(mesh);
   return MeshId{.index = static_cast<uint32_t>(meshes_.size() - 1)};
+}
+
+bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId material, const Transform &transform) {
+  auto it = obj_meshes_.find(path);
+  if (it == obj_meshes_.end()) {
+    MeshId mesh{};
+    if (const std::optional<MeshData> data = loadFromObj(path.c_str())) {
+      mesh = createMesh(data->vertices, data->indices).value_or(MeshId{});
+    }
+    it = obj_meshes_.emplace(path, mesh).first;
+  }
+
+  if (!it->second.valid()) {
+    return false;
+  }
+  frame.draws.push_back({.mesh = it->second, .material = material, .transform = transform});
+  return true;
 }
 
 std::optional<TextureId> Renderer::createTexture(const TextureData &data, ColorSpace color_space) {
