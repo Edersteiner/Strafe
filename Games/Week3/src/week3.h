@@ -18,6 +18,7 @@ private:
   strafe::renderer::MeshId link_;
   strafe::renderer::MeshId poe_;
   strafe::renderer::MeshId poe_collector_;
+  strafe::renderer::MeshId suzanne_;
 
   strafe::renderer::TextureId redead_texture_;
   strafe::renderer::TextureId grave_texture_;
@@ -30,6 +31,7 @@ private:
   strafe::renderer::MaterialId link_material_;
   strafe::renderer::MaterialId poe_material_;
   strafe::renderer::MaterialId poe_collector_material_;
+  strafe::renderer::MaterialId suzanne_material_;
 
   bool perspective_ = true;
   // Drives the spin.

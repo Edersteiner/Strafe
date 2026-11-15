@@ -46,6 +46,9 @@ bool Week3::onInit(Engine &engine) {
   if (auto poe_collector_data = renderer::loadFromObj("assets/models/poe_collector_sitting.obj")) {
     poe_collector_ = *renderer.createMesh(poe_collector_data->vertices, poe_collector_data->indices);
   }
+  if (auto suzanne_data = renderer::loadFromObj("assets/models/suzanne.obj")) {
+    suzanne_ = *renderer.createMesh(suzanne_data->vertices, suzanne_data->indices);
+  }
 
   if (auto tex = renderer::loadTexture("assets/textures/redead_grp.png")) {
     redead_texture_ = *renderer.createTexture(*tex, renderer::ColorSpace::Srgb);
@@ -71,12 +74,15 @@ bool Week3::onInit(Engine &engine) {
   link_material_ = *renderer.createMaterial(*lit);
   poe_material_ = *renderer.createMaterial(*lit);
   poe_collector_material_ = *renderer.createMaterial(*lit);
+  suzanne_material_ = *renderer.createMaterial(*lit);
 
   renderer.setParam(redead_material_, "albedo", redead_texture_);
   renderer.setParam(grave_material_, "albedo", grave_texture_);
   renderer.setParam(link_material_, "albedo", link_texture_);
   renderer.setParam(poe_material_, "albedo", poe_texture_);
   renderer.setParam(poe_collector_material_, "albedo", poe_collector_texture_);
+  // Untextured, so albedo stays the default white and the tint is the colour.
+  renderer.setParam(suzanne_material_, "tint", Vec4(0.8f, 0.8f, 0.8f, 1.0f));
   return true;
 }
 
@@ -125,4 +131,9 @@ void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
        .rotation = Quat::fromAxisAngle(poe_axis, radians(240.0f))});
 
   drawMesh(frame, poe_collector_, poe_collector_material_, {.position = {0.0f, -1.3f, -1.0f}, .scale = Vec3(0.02f)});
+
+  // On the raised platform in front of the big gravestone, turned to face the middle.
+  drawMesh(
+      frame, suzanne_, suzanne_material_,
+      {.position = {-3.0f, 2.2f, 20.0f}, .rotation = Quat::fromAxisAngle({0.0f, 1.0f, 0.0f}, radians(180.0f))});
 }
