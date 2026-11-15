@@ -12,7 +12,7 @@ namespace strafe::gfx {
 
 // The field types a material struct may use. Texture and Sampler are the
 // handle structs from strafe/bindless.slang, each a uint index.
-enum class MaterialFieldType {
+enum class MaterialFieldType : std::int8_t {
   Float,
   Float2,
   Float3,

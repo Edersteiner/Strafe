@@ -240,13 +240,13 @@ VkPipeline PipelineManager::createPipeline(const CompiledShader &shader, const P
       .attachmentCount = static_cast<uint32_t>(blend_attachments.size()),
       .pAttachments = blend_attachments.data()};
 
-  constexpr std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT,           VK_DYNAMIC_STATE_SCISSOR,
+  constexpr std::array kDynamicStates{VK_DYNAMIC_STATE_VIEWPORT,           VK_DYNAMIC_STATE_SCISSOR,
                                       VK_DYNAMIC_STATE_CULL_MODE,          VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
                                       VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE, VK_DYNAMIC_STATE_DEPTH_COMPARE_OP};
   const VkPipelineDynamicStateCreateInfo dynamic{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-      .dynamicStateCount = static_cast<uint32_t>(dynamic_states.size()),
-      .pDynamicStates = dynamic_states.data()};
+      .dynamicStateCount = static_cast<uint32_t>(kDynamicStates.size()),
+      .pDynamicStates = kDynamicStates.data()};
 
   const VkPipelineRenderingCreateInfo rendering{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,

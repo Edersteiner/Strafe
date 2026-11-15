@@ -21,9 +21,9 @@ constexpr float kFarPlane = 100.0f;
 constexpr float kOrthographicHeight = 6.0f;
 
 void cycleDebugView(strafe::renderer::Renderer &renderer) {
-  using DebugView = strafe::renderer::DebugView;
+  using strafe::renderer::DebugView;
   const DebugView current = renderer.debugView();
-  const DebugView next = static_cast<DebugView>((static_cast<int>(current) + 1) % static_cast<int>(DebugView::Count));
+  const auto next = static_cast<DebugView>((static_cast<int>(current) + 1) % static_cast<int>(DebugView::Count));
   renderer.setDebugView(next);
 }
 
@@ -77,7 +77,7 @@ void Week3::onEvent(Engine &engine, const SDL_Event &event) {
   }
 }
 
-void Week3::onUpdate(Engine &engine, float delta_seconds) { time_ += delta_seconds; }
+void Week3::onUpdate(Engine & /* engine */, float delta_seconds) { time_ += delta_seconds; }
 
 void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
   const float aspect = engine.aspect();
