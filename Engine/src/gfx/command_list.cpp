@@ -301,4 +301,9 @@ void CommandList::drawIndexed(
   vkCmdDrawIndexed(buffer_, index_count, instance_count, first_index, vertex_offset, first_instance);
 }
 
+void CommandList::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) {
+  assert(inside_rendering_ && "draw outside a rendering pass");
+  vkCmdDraw(buffer_, vertex_count, instance_count, first_vertex, first_instance);
+}
+
 } // namespace strafe::gfx
