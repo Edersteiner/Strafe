@@ -10,8 +10,8 @@
 #include "strafe/gfx/pipeline_manager.h"
 #include "strafe/gfx/swapchain.h"
 #include "strafe/renderer/obj_loader.h"
+#include "strafe/renderer/view_target.h"
 
-#include "vulkan/vulkan_core.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -173,7 +173,7 @@ bool Renderer::createPipelines() {
     return false;
   }
 
-  pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()}, .depth_format = kViewDepthFormat});
+  pipelines_.registerPass("forward", {.color_formats = {kViewColorFormat}, .depth_format = kViewDepthFormat});
   pipelines_.registerPass("composite", {.color_formats = {swapchain_->format()}});
   materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textures_.slot(id); });
 
@@ -285,10 +285,10 @@ void Renderer::deferDestroyMesh(const Mesh &mesh) {
 }
 
 void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
-  const VkExtent2D extent = swapchain_->extent();
+  assert(textures_.valid(view_target_.color) && "render needs a view target");
   gfx::CommandList cmd(ctx.cmd);
+  bindless_bound_ = false;
 
-  const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
   const FrameData frame_data{
       .view_projection = toGlm(desc.view_projection),
       .camera_position = toGlm(desc.camera_position),
@@ -296,9 +296,44 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       .light_direction = toGlm(desc.light.direction),
       .light_color = toGlm(desc.light.color),
       .ambient = toGlm(desc.light.ambient)};
-  gfx::writeBuffer(*device_, frame_buffer, std::as_bytes(std::span(&frame_data, 1)));
+  gfx::writeBuffer(*device_, frame_buffers_[ctx.frame_slot], std::as_bytes(std::span(&frame_data, 1)));
   materials_.upload(ctx.frame_slot);
 
+  const VkImage view_color = textures_.image(view_target_.color).handle;
+  const VkImage swapchain_image = swapchain_->image(ctx.image_index);
+
+  // The view target is shared by every frame in flight, so clearing it waits
+  // for the previous frame's composite reads and depth writes. Between frames
+  // the color image is always in ShaderRead.
+  const std::array<gfx::ImageTransition, 2> scene_transitions{{
+      {.image = view_color,
+       .from = gfx::ResourceState::ShaderRead,
+       .to = gfx::ResourceState::ColorTarget,
+       .discard = true},
+      {.image = view_target_.depth.handle,
+       .from = gfx::ResourceState::DepthTarget,
+       .to = gfx::ResourceState::DepthTarget,
+       .discard = true,
+       .aspect = view_target_.depth.aspect},
+  }};
+  cmd.transition(scene_transitions);
+  recordScene(cmd, ctx, desc);
+
+  const std::array<gfx::ImageTransition, 2> composite_transitions{{
+      {.image = view_color, .from = gfx::ResourceState::ColorTarget, .to = gfx::ResourceState::ShaderRead},
+      {.image = swapchain_image,
+       .from = gfx::ResourceState::Present,
+       .to = gfx::ResourceState::ColorTarget,
+       .discard = true},
+  }};
+  cmd.transition(composite_transitions);
+  recordComposite(cmd, ctx);
+
+  cmd.transition(
+      {.image = swapchain_image, .from = gfx::ResourceState::ColorTarget, .to = gfx::ResourceState::Present});
+}
+
+void Renderer::recordScene(gfx::CommandList &cmd, const gfx::FrameContext &ctx, const FrameDesc &desc) {
   // Opaque draws first, then blended ones over them.
   draw_order_.clear();
   for (uint32_t i = 0; i < desc.draws.size(); ++i) {
@@ -316,77 +351,76 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   };
   std::ranges::stable_sort(draw_order_, [&](uint32_t a, uint32_t b) { return sort_key(a) < sort_key(b); });
 
-  // Both targets are cleared, so their old contents are discarded. The depth
-  // image is shared by every frame in flight, so it still waits for the
-  // previous frame's depth writes.
-  const std::array<gfx::ImageTransition, 2> begin_transitions{{
-      {.image = swapchain_->image(ctx.image_index),
-       .from = gfx::ResourceState::Present,
-       .to = gfx::ResourceState::ColorTarget,
-       .discard = true},
-      {.image = view_target_.depth.handle,
-       .from = gfx::ResourceState::DepthTarget,
-       .to = gfx::ResourceState::DepthTarget,
-       .discard = true,
-       .aspect = view_target_.depth.aspect},
-  }};
-  cmd.transition(begin_transitions);
-
+  const VkExtent2D extent = view_target_.extent;
   const gfx::ColorAttachment color_attachment{
-      .view = swapchain_->imageView(ctx.image_index), .clear_color = {0.01f, 0.01f, 0.01f, 1.0f}};
-
+      .view = textures_.image(view_target_.color).view, .clear_color = {0.01f, 0.01f, 0.01f, 1.0f}};
   cmd.beginRendering(
       {.extent = extent,
        .colors = {&color_attachment, 1},
        .depth = gfx::DepthAttachment{.view = view_target_.depth.view}});
-  {
-    cmd.setViewport(extent);
-    cmd.setScissor(extent);
+  cmd.setViewport(extent);
+  cmd.setScissor(extent);
 
-    gfx::ShaderId bound_shader;
-    for (const uint32_t draw_index : draw_order_) {
-      const DrawItem &draw = desc.draws[draw_index];
-      const gfx::ShaderId shader = materials_.shader(draw.material);
-      if (shader.index != bound_shader.index) {
+  const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
+  gfx::ShaderId bound_shader;
+  for (const uint32_t draw_index : draw_order_) {
+    const DrawItem &draw = desc.draws[draw_index];
+    const gfx::ShaderId shader = materials_.shader(draw.material);
+    if (shader.index != bound_shader.index) {
 #ifdef STRAFE_DEBUG
-        if (debug_view_ == DebugView::Wireframe) {
-          pipelines_.bind(cmd, wireframe_shader_);
-        } else if (debug_view_ == DebugView::Normals) {
-          pipelines_.bind(cmd, normals_shader_);
-        } else if (debug_view_ == DebugView::DrawId) {
-          pipelines_.bind(cmd, drawid_shader_);
-        } else {
-          pipelines_.bind(cmd, shader);
-        }
-#else
-        pipelines_.bind(cmd, shader);
-#endif
-        // Every pipeline shares the layout, so the set stays bound across
-        // later pipeline changes.
-        if (!bound_shader.valid()) {
-          cmd.bindBindlessSet(bindless_.set());
-        }
-        bound_shader = shader;
+      if (debug_view_ == DebugView::Wireframe) {
+        bindShader(cmd, wireframe_shader_);
+      } else if (debug_view_ == DebugView::Normals) {
+        bindShader(cmd, normals_shader_);
+      } else if (debug_view_ == DebugView::DrawId) {
+        bindShader(cmd, drawid_shader_);
+      } else {
+        bindShader(cmd, shader);
       }
-
-      const Mesh &mesh = meshes_[draw.mesh.index];
-      cmd.bindIndexBuffer(mesh.index_buffer);
-      cmd.pushConstants(
-          PushConstants{
-              .transform = toGlm(draw.transform.toMatrix()),
-              .frame_data = frame_buffer.address,
-              .material = materials_.address(draw.material, ctx.frame_slot),
-              .vertex_buffer = mesh.vertex_buffer.address,
-              .draw_id = draw_index});
-      cmd.drawIndexed(mesh.index_count);
+#else
+      bindShader(cmd, shader);
+#endif
+      bound_shader = shader;
     }
+
+    const Mesh &mesh = meshes_[draw.mesh.index];
+    cmd.bindIndexBuffer(mesh.index_buffer);
+    cmd.pushConstants(
+        PushConstants{
+            .transform = toGlm(draw.transform.toMatrix()),
+            .frame_data = frame_buffer.address,
+            .material = materials_.address(draw.material, ctx.frame_slot),
+            .vertex_buffer = mesh.vertex_buffer.address,
+            .draw_id = draw_index});
+    cmd.drawIndexed(mesh.index_count);
   }
   cmd.endRendering();
+}
 
-  cmd.transition(
-      {.image = swapchain_->image(ctx.image_index),
-       .from = gfx::ResourceState::ColorTarget,
-       .to = gfx::ResourceState::Present});
+void Renderer::recordComposite(gfx::CommandList &cmd, const gfx::FrameContext &ctx) {
+  const VkExtent2D extent = swapchain_->extent();
+  // Black shows wherever no view covers the screen.
+  const gfx::ColorAttachment color_attachment{
+      .view = swapchain_->imageView(ctx.image_index), .clear_color = {0.0f, 0.0f, 0.0f, 1.0f}};
+  cmd.beginRendering({.extent = extent, .colors = {&color_attachment, 1}});
+  cmd.setViewport(extent);
+  cmd.setScissor(extent);
+
+  // A fullscreen triangle built from the vertex id, so no buffers.
+  bindShader(cmd, composite_shader_);
+  cmd.pushConstants(PushConstants{.material = materials_.address(composite_material_, ctx.frame_slot)});
+  cmd.draw(3);
+  cmd.endRendering();
+}
+
+void Renderer::bindShader(gfx::CommandList &cmd, gfx::ShaderId shader) {
+  pipelines_.bind(cmd, shader);
+  // Every pipeline shares the layout, so the set stays bound across later
+  // pipeline changes and passes.
+  if (!bindless_bound_) {
+    cmd.bindBindlessSet(bindless_.set());
+    bindless_bound_ = true;
+  }
 }
 
 } // namespace strafe::renderer

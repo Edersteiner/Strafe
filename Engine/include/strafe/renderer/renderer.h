@@ -26,6 +26,7 @@
 #include <vector>
 
 namespace strafe::gfx {
+class CommandList;
 class Device;
 class Swapchain;
 } // namespace strafe::gfx
@@ -86,6 +87,13 @@ private:
   bool createPipelines();
   void deferDestroyMesh(const Mesh &mesh);
 
+  // render() records every barrier, the passes only record their draws.
+  void recordScene(gfx::CommandList &cmd, const gfx::FrameContext &ctx, const FrameDesc &desc);
+  void recordComposite(gfx::CommandList &cmd, const gfx::FrameContext &ctx);
+  // Binds the bindless set with the frame's first pipeline, whichever pass
+  // that is in.
+  void bindShader(gfx::CommandList &cmd, gfx::ShaderId shader);
+
   gfx::Device *device_ = nullptr;
   gfx::Swapchain *swapchain_ = nullptr;
   gfx::FrameRing *frame_ring_ = nullptr;
@@ -110,6 +118,8 @@ private:
 
   gfx::ShaderId composite_shader_;
   MaterialId composite_material_;
+  // Reset by render(), set by bindShader.
+  bool bindless_bound_ = false;
 
   DebugView debug_view_ = DebugView::None;
   gfx::ShaderId wireframe_shader_;
