@@ -1,5 +1,6 @@
 #include "strafe/gfx/command_list.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -97,8 +98,8 @@ void CommandList::transition(std::span<const ImageTransition> transitions) {
         .image = t.image,
         .subresourceRange{
             .aspectMask = t.aspect,
-            .baseMipLevel = 0,
-            .levelCount = VK_REMAINING_MIP_LEVELS,
+            .baseMipLevel = t.base_mip,
+            .levelCount = t.mip_count,
             .baseArrayLayer = 0,
             .layerCount = VK_REMAINING_ARRAY_LAYERS}};
   }
@@ -148,6 +149,35 @@ void CommandList::copyBufferToImage(const Buffer &src, const Image &dst) {
       .regionCount = 1,
       .pRegions = &region};
   vkCmdCopyBufferToImage2(buffer_, &info);
+}
+
+void CommandList::blitMip(const Image &image, uint32_t dst_mip) {
+  assert(!inside_rendering_ && "Blits can't be recorded inside rendering");
+  assert(image.handle && dst_mip > 0 && dst_mip < image.mip_levels);
+
+  // Each mip is half the one above, rounded down, but never below 1.
+  auto mip_corner = [&](uint32_t mip) {
+    return VkOffset3D{
+        .x = static_cast<int32_t>(std::max(image.extent.width >> mip, 1u)),
+        .y = static_cast<int32_t>(std::max(image.extent.height >> mip, 1u)),
+        .z = 1};
+  };
+  const VkImageBlit2 region{
+      .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
+      .srcSubresource{.aspectMask = image.aspect, .mipLevel = dst_mip - 1, .baseArrayLayer = 0, .layerCount = 1},
+      .srcOffsets = {VkOffset3D{}, mip_corner(dst_mip - 1)},
+      .dstSubresource{.aspectMask = image.aspect, .mipLevel = dst_mip, .baseArrayLayer = 0, .layerCount = 1},
+      .dstOffsets = {VkOffset3D{}, mip_corner(dst_mip)}};
+  const VkBlitImageInfo2 info{
+      .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+      .srcImage = image.handle,
+      .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      .dstImage = image.handle,
+      .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      .regionCount = 1,
+      .pRegions = &region,
+      .filter = VK_FILTER_LINEAR};
+  vkCmdBlitImage2(buffer_, &info);
 }
 
 void CommandList::beginRendering(const RenderingDesc &desc) {

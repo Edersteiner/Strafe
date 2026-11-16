@@ -35,8 +35,10 @@ public:
   // TRANSFER_DST. Afterwards any later command may read it.
   bool uploadBuffer(const Buffer &dst, std::span<const std::byte> data, VkDeviceSize offset = 0);
 
-  // Fills mip 0 from tightly packed texels and leaves the whole image in
-  // `final_state`. The image needs TRANSFER_DST in its usage.
+  // Fills mip 0 from tightly packed texels, generates every further mip by
+  // blitting from the one above, and leaves the whole image in `final_state`.
+  // The image needs TRANSFER_DST in its usage, plus TRANSFER_SRC with more
+  // than one mip.
   bool uploadImage(
       const Image &dst, std::span<const std::byte> texels, ResourceState final_state = ResourceState::ShaderRead);
 

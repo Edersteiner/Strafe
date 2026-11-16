@@ -283,11 +283,14 @@ bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId m
 }
 
 std::optional<TextureId> Renderer::createTexture(const TextureData &data, ColorSpace color_space) {
+  const VkExtent2D extent{.width = data.width, .height = data.height};
+  // TRANSFER_SRC because the uploader blits each mip from the one above.
   const std::optional<gfx::Image> image = gfx::createImage(
       *device_,
-      {.extent = {.width = data.width, .height = data.height},
+      {.extent = extent,
        .format = color_space == ColorSpace::Srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM,
-       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT});
+       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+       .mip_levels = gfx::fullMipCount(extent)});
   if (!image) {
     log::error("Failed to create a {}x{} texture", data.width, data.height);
     return std::nullopt;

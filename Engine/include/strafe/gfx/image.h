@@ -39,6 +39,9 @@ VkImageAspectFlags aspectFromFormat(VkFormat format);
 // Bytes per texel for the uncompressed formats uploads support, 0 otherwise.
 uint32_t texelSize(VkFormat format);
 
+// Mips in a full chain from `extent` down to 1x1.
+uint32_t fullMipCount(VkExtent2D extent);
+
 // Creates the image in device local memory together with a view over all of
 // it. The image starts in ResourceState::Undefined.
 std::optional<Image> createImage(Device &device, const ImageDesc &desc);
