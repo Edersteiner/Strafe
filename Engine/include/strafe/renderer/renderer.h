@@ -10,6 +10,8 @@
 #include "strafe/renderer/material.h"
 #include "strafe/renderer/mesh.h"
 #include "strafe/renderer/texture.h"
+#include "strafe/renderer/texture_table.h"
+#include "strafe/renderer/view_target.h"
 
 #include <volk.h>
 #include <vk_mem_alloc.h>
@@ -46,8 +48,7 @@ public:
   // flushes the destruction deferred here.
   void shutdown();
 
-  // Destroys the depth target immediately, so the GPU must be idle.
-  // Swapchain::recreate guarantees that.
+  // Resizes the view target to the new swapchain extent.
   bool resize(VkExtent2D extent);
 
   // Uploads the mesh once. The returned id stays valid until shutdown.
@@ -55,12 +56,12 @@ public:
 
   std::optional<MeshId> uploadMesh(Mesh mesh);
 
-  // Uploads the texture once, without mipmaps. The returned id stays valid
-  // until shutdown.
+  // Uploads the texture once with a full mip chain. The returned id stays
+  // valid until shutdown.
   std::optional<TextureId> createTexture(const TextureData &data, ColorSpace color_space);
 
   // 1x1 white, so an untextured draw keeps its plain color.
-  TextureId defaultTexture() const { return default_texture_; }
+  TextureId defaultTexture() const { return textures_.defaultTexture(); }
 
   // Compiles shaders/<name>.slang and builds its pipeline.
   std::optional<gfx::ShaderId> loadShader(std::string_view name);
@@ -79,19 +80,10 @@ public:
   DebugView debugView() const { return debug_view_; }
 
 private:
-  static constexpr VkFormat kDepthFormat = VK_FORMAT_D32_SFLOAT;
-
-  struct Texture {
-    gfx::Image image;
-    // Index into the bindless sampled image array, pushed with each draw.
-    uint32_t bindless_slot = 0;
-  };
-
-  bool createDepthBuffer(VkExtent2D extent);
-  void destroyDepthBuffer();
+  // Creates the view target or resizes it, then points the composite at it.
+  bool updateViewTarget(VkExtent2D extent);
   bool createFrameBuffers();
   bool createPipelines();
-  uint32_t textureSlot(TextureId id) const;
   void deferDestroyMesh(const Mesh &mesh);
 
   gfx::Device *device_ = nullptr;
@@ -101,7 +93,8 @@ private:
   gfx::Uploader uploader_;
   gfx::BindlessSet bindless_;
 
-  gfx::Image depth_image_;
+  TextureTable textures_;
+  ViewTarget view_target_;
 
   // FrameData for each frame in flight, indexed by FrameContext::frame_slot.
   std::array<gfx::Buffer, gfx::FrameRing::kMaxFramesInFlight> frame_buffers_;
@@ -114,8 +107,6 @@ private:
   std::vector<Mesh> meshes_;
   // renderObj cache
   std::unordered_map<std::string, MeshId> obj_meshes_;
-  std::vector<Texture> textures_;
-  TextureId default_texture_;
 
   gfx::ShaderId composite_shader_;
   MaterialId composite_material_;

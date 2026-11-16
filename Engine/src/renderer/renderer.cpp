@@ -81,23 +81,18 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain, gfx::F
     return false;
   }
 
-  const TextureData white{
-      .width = 1, .height = 1, .rgba = {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}, std::byte{0xff}}};
-  if (const std::optional<TextureId> id = createTexture(white, ColorSpace::Srgb)) {
-    default_texture_ = *id;
-  } else {
-    log::error("Failed to create the default texture");
-    return false;
-  }
-
-  // No swapchain means the window starts minimized. resize() creates the
-  // depth buffer once the swapchain exists.
-  if (swapchain_->handle() && !createDepthBuffer(swapchain_->extent())) {
-    log::error("Failed to create depth buffer");
+  if (!textures_.initialize(device, frame_ring, uploader_, bindless_)) {
     return false;
   }
   if (!createPipelines()) {
     log::error("Failed to create the pipelines");
+    return false;
+  }
+
+  // No swapchain means the window starts minimized. resize() creates the
+  // view target once the swapchain exists.
+  if (swapchain_->handle() && !updateViewTarget(swapchain_->extent())) {
+    log::error("Failed to create the view target");
     return false;
   }
   return true;
@@ -117,13 +112,8 @@ void Renderer::shutdown() {
   meshes_.clear();
   obj_meshes_.clear();
 
-  // The whole bindless set goes away below, so the slots aren't freed one by
-  // one.
-  for (const Texture &texture : textures_) {
-    frame_ring_->deferDestroy([gfx_device = device_, image = texture.image] { gfx::destroyImage(*gfx_device, image); });
-  }
-  textures_.clear();
-  default_texture_ = {};
+  destroyViewTarget(*device_, *frame_ring_, textures_, view_target_);
+  textures_.shutdown();
 
   for (gfx::Buffer &buffer : frame_buffers_) {
     if (buffer.handle) {
@@ -132,37 +122,32 @@ void Renderer::shutdown() {
     buffer = {};
   }
 
-  destroyDepthBuffer();
   // Both safe to destroy now, because the GPU is idle.
   bindless_.shutdown();
   uploader_.shutdown();
 }
 
 bool Renderer::resize(VkExtent2D extent) {
-  destroyDepthBuffer();
+  // A minimized window keeps its target, since nothing renders until it's
+  // restored.
   if (extent.width == 0 || extent.height == 0) {
     return true;
   }
-  return createDepthBuffer(extent);
+  return updateViewTarget(extent);
 }
 
-bool Renderer::createDepthBuffer(VkExtent2D extent) {
-  const std::optional<gfx::Image> depth = gfx::createImage(
-      *device_,
-      {.extent = extent,
-       .format = kDepthFormat,
-       .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-       .dedicated = true});
-  if (!depth) {
+bool Renderer::updateViewTarget(VkExtent2D extent) {
+  if (textures_.valid(view_target_.color)) {
+    if (!resizeViewTarget(*device_, *frame_ring_, textures_, view_target_, extent)) {
+      return false;
+    }
+  } else if (const std::optional<ViewTarget> created = createViewTarget(*device_, textures_, extent)) {
+    view_target_ = *created;
+  } else {
     return false;
   }
-  depth_image_ = *depth;
-  return true;
-}
-
-void Renderer::destroyDepthBuffer() {
-  gfx::destroyImage(*device_, depth_image_);
-  depth_image_ = {};
+  // The material holds the bindless slot, which changes with every new image.
+  return materials_.set(composite_material_, "source", view_target_.color);
 }
 
 bool Renderer::createFrameBuffers() {
@@ -188,9 +173,9 @@ bool Renderer::createPipelines() {
     return false;
   }
 
-  pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()}, .depth_format = kDepthFormat});
+  pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()}, .depth_format = kViewDepthFormat});
   pipelines_.registerPass("composite", {.color_formats = {swapchain_->format()}});
-  materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textureSlot(id); });
+  materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textures_.slot(id); });
 
 // Load debug view shaders in debug mode
 #ifdef STRAFE_DEBUG
@@ -224,13 +209,6 @@ std::optional<MaterialId> Renderer::createMaterial(gfx::ShaderId shader) {
 
 bool Renderer::setParam(MaterialId material, std::string_view name, const MaterialParam &value) {
   return materials_.set(material, name, value);
-}
-
-uint32_t Renderer::textureSlot(TextureId id) const {
-  // An invalid or stale id falls back to white instead of sampling an empty
-  // slot, which would be undefined behaviour on the GPU.
-  const TextureId resolved = id.index < textures_.size() ? id : default_texture_;
-  return textures_[resolved.index].bindless_slot;
 }
 
 std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices, std::span<const uint32_t> indices) {
@@ -296,34 +274,7 @@ bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId m
 }
 
 std::optional<TextureId> Renderer::createTexture(const TextureData &data, ColorSpace color_space) {
-  const VkExtent2D extent{.width = data.width, .height = data.height};
-  // TRANSFER_SRC because the uploader blits each mip from the one above.
-  const std::optional<gfx::Image> image = gfx::createImage(
-      *device_,
-      {.extent = extent,
-       .format = color_space == ColorSpace::Srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM,
-       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-       .mip_levels = gfx::fullMipCount(extent)});
-  if (!image) {
-    log::error("Failed to create a {}x{} texture", data.width, data.height);
-    return std::nullopt;
-  }
-
-  // Validates the byte count against the extent and format.
-  if (!uploader_.uploadImage(*image, data.rgba)) {
-    // Nothing on the GPU uses it, and the uploader has finished with it.
-    gfx::destroyImage(*device_, *image);
-    return std::nullopt;
-  }
-
-  const std::optional<uint32_t> slot = bindless_.addSampledImage(image->view);
-  if (!slot) {
-    gfx::destroyImage(*device_, *image);
-    return std::nullopt;
-  }
-
-  textures_.push_back({.image = *image, .bindless_slot = *slot});
-  return TextureId{.index = static_cast<uint32_t>(textures_.size() - 1)};
+  return textures_.create(data, color_space);
 }
 
 void Renderer::deferDestroyMesh(const Mesh &mesh) {
@@ -363,8 +314,7 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
     const bool blended = pipelines_.reflection(shader).blend != gfx::BlendMode::Opaque;
     return std::pair(blended, shader.index);
   };
-  std::stable_sort(
-      draw_order_.begin(), draw_order_.end(), [&](uint32_t a, uint32_t b) { return sort_key(a) < sort_key(b); });
+  std::ranges::stable_sort(draw_order_, [&](uint32_t a, uint32_t b) { return sort_key(a) < sort_key(b); });
 
   // Both targets are cleared, so their old contents are discarded. The depth
   // image is shared by every frame in flight, so it still waits for the
@@ -374,11 +324,11 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
        .from = gfx::ResourceState::Present,
        .to = gfx::ResourceState::ColorTarget,
        .discard = true},
-      {.image = depth_image_.handle,
+      {.image = view_target_.depth.handle,
        .from = gfx::ResourceState::DepthTarget,
        .to = gfx::ResourceState::DepthTarget,
        .discard = true,
-       .aspect = depth_image_.aspect},
+       .aspect = view_target_.depth.aspect},
   }};
   cmd.transition(begin_transitions);
 
@@ -386,7 +336,9 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       .view = swapchain_->imageView(ctx.image_index), .clear_color = {0.01f, 0.01f, 0.01f, 1.0f}};
 
   cmd.beginRendering(
-      {.extent = extent, .colors = {&color_attachment, 1}, .depth = gfx::DepthAttachment{.view = depth_image_.view}});
+      {.extent = extent,
+       .colors = {&color_attachment, 1},
+       .depth = gfx::DepthAttachment{.view = view_target_.depth.view}});
   {
     cmd.setViewport(extent);
     cmd.setScissor(extent);
