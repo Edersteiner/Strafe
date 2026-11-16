@@ -117,6 +117,9 @@ private:
   std::vector<Texture> textures_;
   TextureId default_texture_;
 
+  gfx::ShaderId composite_shader_;
+  MaterialId composite_material_;
+
   DebugView debug_view_ = DebugView::None;
   gfx::ShaderId wireframe_shader_;
   gfx::ShaderId normals_shader_;

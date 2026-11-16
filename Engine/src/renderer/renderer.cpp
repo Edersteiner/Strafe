@@ -2,10 +2,12 @@
 
 #include "strafe/core/log.h"
 #include "strafe/core/utils.h"
+#include "strafe/gfx/bindless.h"
 #include "strafe/gfx/buffer.h"
 #include "strafe/gfx/command_list.h"
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
+#include "strafe/gfx/pipeline_manager.h"
 #include "strafe/gfx/swapchain.h"
 #include "strafe/renderer/obj_loader.h"
 
@@ -187,6 +189,7 @@ bool Renderer::createPipelines() {
   }
 
   pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()}, .depth_format = kDepthFormat});
+  pipelines_.registerPass("composite", {.color_formats = {swapchain_->format()}});
   materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textureSlot(id); });
 
 // Load debug view shaders in debug mode
@@ -195,6 +198,16 @@ bool Renderer::createPipelines() {
   normals_shader_ = *pipelines_.load("debug/normals");
   drawid_shader_ = *pipelines_.load("debug/drawid");
 #endif
+
+  const std::optional<gfx::ShaderId> composite = pipelines_.load("composite");
+  if (!composite) {
+    log::error("Failed to load the composite shader");
+    return false;
+  }
+
+  composite_shader_ = *composite;
+  composite_material_ = materials_.create(composite_shader_);
+  materials_.set(composite_material_, "sampler", gfx::Sampler::LinearClamp);
 
   return true;
 }
