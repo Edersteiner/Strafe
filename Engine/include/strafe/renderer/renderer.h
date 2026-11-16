@@ -30,6 +30,8 @@ class Swapchain;
 
 namespace strafe::renderer {
 
+enum class DebugView : std::int8_t { None, Wireframe, Normals, DrawId, Count };
+
 class Renderer {
 public:
   Renderer() = default;
@@ -73,6 +75,9 @@ public:
 
   void render(const gfx::FrameContext &ctx, const FrameDesc &desc);
 
+  void setDebugView(DebugView view) { debug_view_ = view; }
+  DebugView debugView() const { return debug_view_; }
+
 private:
   static constexpr VkFormat kDepthFormat = VK_FORMAT_D32_SFLOAT;
 
@@ -111,6 +116,11 @@ private:
   std::unordered_map<std::string, MeshId> obj_meshes_;
   std::vector<Texture> textures_;
   TextureId default_texture_;
+
+  DebugView debug_view_ = DebugView::None;
+  gfx::ShaderId wireframe_shader_;
+  gfx::ShaderId normals_shader_;
+  gfx::ShaderId drawid_shader_;
 };
 
 } // namespace strafe::renderer

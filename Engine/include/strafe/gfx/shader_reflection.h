@@ -12,7 +12,7 @@ namespace strafe::gfx {
 
 // The field types a material struct may use. Texture and Sampler are the
 // handle structs from strafe/bindless.slang, each a uint index.
-enum class MaterialFieldType {
+enum class MaterialFieldType : std::int8_t {
   Float,
   Float2,
   Float3,
@@ -78,6 +78,7 @@ struct ShaderReflection {
   BlendMode blend = BlendMode::Opaque;
   CullMode cull = CullMode::Back;
   DepthMode depth = DepthMode::TestWrite;
+  PolygonMode polygon = PolygonMode::Fill;
   std::string pass = "forward";
   // [Material("...")], empty when the shader has no material parameters.
   std::string material_type;

@@ -32,13 +32,16 @@ struct PushConstants {
   VkDeviceAddress frame_data = 0; // This frame's FrameData buffer.
   VkDeviceAddress material = 0;   // The draw's material block, or 0.
   VkDeviceAddress vertex_buffer = 0;
+  uint32_t draw_id = -1; // For debugging, -1 means not set.
+  uint32_t padding = 0;
 };
 
-static_assert(sizeof(PushConstants) == 88);
+static_assert(sizeof(PushConstants) == 96);
 static_assert(offsetof(PushConstants, transform) == 0);
 static_assert(offsetof(PushConstants, frame_data) == 64);
 static_assert(offsetof(PushConstants, material) == 72);
 static_assert(offsetof(PushConstants, vertex_buffer) == 80);
+static_assert(offsetof(PushConstants, draw_id) == 88);
 
 struct FrameData {
   glm::mat4 view_projection = glm::mat4(1.0f);
@@ -182,8 +185,17 @@ bool Renderer::createPipelines() {
           {.push_constants = sizeof(PushConstants), .frame_data = sizeof(FrameData)}, std::move(shader_directories))) {
     return false;
   }
+
   pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()}, .depth_format = kDepthFormat});
   materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textureSlot(id); });
+
+// Load debug view shaders in debug mode
+#ifdef STRAFE_DEBUG
+  wireframe_shader_ = *pipelines_.load("debug/wireframe");
+  normals_shader_ = *pipelines_.load("debug/normals");
+  drawid_shader_ = *pipelines_.load("debug/drawid");
+#endif
+
   return true;
 }
 
@@ -368,7 +380,19 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
       const DrawItem &draw = desc.draws[draw_index];
       const gfx::ShaderId shader = materials_.shader(draw.material);
       if (shader.index != bound_shader.index) {
+#ifdef STRAFE_DEBUG
+        if (debug_view_ == DebugView::Wireframe) {
+          pipelines_.bind(cmd, wireframe_shader_);
+        } else if (debug_view_ == DebugView::Normals) {
+          pipelines_.bind(cmd, normals_shader_);
+        } else if (debug_view_ == DebugView::DrawId) {
+          pipelines_.bind(cmd, drawid_shader_);
+        } else {
+          pipelines_.bind(cmd, shader);
+        }
+#else
         pipelines_.bind(cmd, shader);
+#endif
         // Every pipeline shares the layout, so the set stays bound across
         // later pipeline changes.
         if (!bound_shader.valid()) {
@@ -384,7 +408,8 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
               .transform = toGlm(draw.transform.toMatrix()),
               .frame_data = frame_buffer.address,
               .material = materials_.address(draw.material, ctx.frame_slot),
-              .vertex_buffer = mesh.vertex_buffer.address});
+              .vertex_buffer = mesh.vertex_buffer.address,
+              .draw_id = draw_index});
       cmd.drawIndexed(mesh.index_count);
     }
   }

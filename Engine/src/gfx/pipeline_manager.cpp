@@ -6,6 +6,7 @@
 #include "strafe/gfx/framering.h"
 #include "strafe/gfx/vk_check.h"
 
+#include "vulkan/vulkan_core.h"
 #include <array>
 #include <cassert>
 
@@ -41,6 +42,19 @@ VkPipelineColorBlendAttachmentState blendState(BlendMode mode) {
     break;
   }
   return state;
+}
+
+VkPolygonMode polygonMode(PolygonMode mode) {
+  switch (mode) {
+  case PolygonMode::Fill:
+    return VK_POLYGON_MODE_FILL;
+  case PolygonMode::Line:
+    return VK_POLYGON_MODE_LINE;
+  case PolygonMode::Point:
+    return VK_POLYGON_MODE_POINT;
+  }
+  assert(false && "Unknown PolygonMode");
+  return VK_POLYGON_MODE_FILL;
 }
 
 bool hasStage(const CompiledShader &shader, VkShaderStageFlagBits stage) {
@@ -210,7 +224,7 @@ VkPipeline PipelineManager::createPipeline(const CompiledShader &shader, const P
   // cullMode is dynamic, set by bind().
   const VkPipelineRasterizationStateCreateInfo raster{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .polygonMode = VK_POLYGON_MODE_FILL,
+      .polygonMode = polygonMode(shader.reflection.polygon),
       .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
       .lineWidth = 1.0f};
   const VkPipelineMultisampleStateCreateInfo multisample{
@@ -226,13 +240,13 @@ VkPipeline PipelineManager::createPipeline(const CompiledShader &shader, const P
       .attachmentCount = static_cast<uint32_t>(blend_attachments.size()),
       .pAttachments = blend_attachments.data()};
 
-  constexpr std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT,           VK_DYNAMIC_STATE_SCISSOR,
+  constexpr std::array kDynamicStates{VK_DYNAMIC_STATE_VIEWPORT,           VK_DYNAMIC_STATE_SCISSOR,
                                       VK_DYNAMIC_STATE_CULL_MODE,          VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
                                       VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE, VK_DYNAMIC_STATE_DEPTH_COMPARE_OP};
   const VkPipelineDynamicStateCreateInfo dynamic{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-      .dynamicStateCount = static_cast<uint32_t>(dynamic_states.size()),
-      .pDynamicStates = dynamic_states.data()};
+      .dynamicStateCount = static_cast<uint32_t>(kDynamicStates.size()),
+      .pDynamicStates = kDynamicStates.data()};
 
   const VkPipelineRenderingCreateInfo rendering{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,

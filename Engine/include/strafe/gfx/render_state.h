@@ -31,8 +31,16 @@ enum class DepthMode : uint8_t {
   Off,       // "off"
 };
 
+// [Polygon("...")]. Baked into the pipeline.
+enum class PolygonMode : uint8_t {
+  Fill,  // "fill" (default)
+  Line,  // "line"
+  Point, // "point"
+};
+
 std::optional<BlendMode> parseBlendMode(std::string_view text);
 std::optional<CullMode> parseCullMode(std::string_view text);
 std::optional<DepthMode> parseDepthMode(std::string_view text);
+std::optional<PolygonMode> parsePolygonMode(std::string_view text);
 
 } // namespace strafe::gfx

@@ -12,7 +12,7 @@ namespace strafe::gfx {
 class Device;
 
 // Fixed samplers, indexed in shaders by their value.
-enum class Sampler : uint32_t {
+enum class Sampler : uint8_t {
   LinearRepeat,
   LinearClamp,
   NearestRepeat,
