@@ -344,12 +344,16 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   // First, so indices into views_ stay valid for the rest of the frame.
   evictUnusedViews();
 
-  assert(desc.views.size() <= kMaxViews && "Too many views in FrameDesc");
+  // A game that pushes no views gets one view of desc.camera over the window.
+  const ViewDesc default_view{.id = kDefaultViewId, .camera = desc.camera};
+  const std::span<const ViewDesc> view_descs =
+      desc.views.empty() ? std::span<const ViewDesc>(&default_view, 1) : std::span<const ViewDesc>(desc.views);
+  assert(view_descs.size() <= kMaxViews && "Too many views in FrameDesc");
   const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
   const VkExtent2D screen = swapchain_->extent();
   std::array<FrameView, kMaxViews> frame_views{};
   uint32_t view_count = 0;
-  for (const ViewDesc &view_desc : desc.views) {
+  for (const ViewDesc &view_desc : view_descs) {
     if (view_count == kMaxViews) {
       break;
     }

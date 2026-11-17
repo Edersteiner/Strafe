@@ -13,6 +13,9 @@ struct ViewId {
   bool operator==(const ViewId &) const = default;
 };
 
+// The id of the view the renderer adds when a frame has none.
+inline constexpr ViewId kDefaultViewId{UINT32_MAX};
+
 // A rectangle on the window in normalized coordinates.
 struct ScreenRegion {
   float x = 0.0f;

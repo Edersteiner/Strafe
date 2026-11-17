@@ -25,6 +25,8 @@ struct DirectionalLight {
 };
 
 struct FrameDesc {
+  // Only used when views is empty, as one view covering the whole window.
+  Camera camera;
   // Drawn in order, later views over earlier ones where regions overlap.
   std::vector<ViewDesc> views;
   DirectionalLight light;

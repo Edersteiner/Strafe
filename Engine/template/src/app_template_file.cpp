@@ -83,10 +83,9 @@ void AppTemplateName::onEvent(Engine &engine, const SDL_Event &event) {
 void AppTemplateName::onUpdate(Engine & /* engine */, float delta_seconds) { angle_ += kSpinSpeed * delta_seconds; }
 
 void AppTemplateName::onRender(Engine & /* engine */, renderer::FrameDesc &frame) {
-  renderer::Camera camera{.projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f}};
-  camera.transform.position = kCameraPosition;
-  camera.lookAt(Vec3());
-  frame.views.push_back({.id = renderer::ViewId{0}, .camera = camera});
+  frame.camera.transform.position = kCameraPosition;
+  frame.camera.lookAt(Vec3());
+  frame.camera.projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f};
 
   const Vec3 axis(0.3f, 1.0f, 0.2f);
   frame.draws.push_back(
