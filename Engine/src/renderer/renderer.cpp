@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -61,6 +62,30 @@ static_assert(offsetof(FrameData, light_direction) == 80);
 static_assert(offsetof(FrameData, light_color) == 92);
 static_assert(offsetof(FrameData, ambient) == 104);
 
+// Each view's FrameData block starts 16 byte aligned.
+constexpr VkDeviceSize kFrameDataStride = (sizeof(FrameData) + 15) / 16 * 16;
+
+VkRect2D pixelRect(const ScreenRegion &region, VkExtent2D extent) {
+  const auto edge = [](float t, uint32_t size) {
+    return static_cast<int32_t>(std::lround(std::clamp(t, 0.0f, 1.0f) * static_cast<float>(size)));
+  };
+  const int32_t x0 = edge(region.x, extent.width);
+  const int32_t y0 = edge(region.y, extent.height);
+  const int32_t x1 = edge(region.x + region.width, extent.width);
+  const int32_t y1 = edge(region.y + region.height, extent.height);
+  return {
+      .offset = {.x = x0, .y = y0},
+      .extent = {
+          .width = static_cast<uint32_t>(std::max(x1 - x0, 0)), .height = static_cast<uint32_t>(std::max(y1 - y0, 0))}};
+}
+
+VkExtent2D scaledExtent(VkExtent2D extent, float scale) {
+  const auto scaled = [scale](uint32_t size) {
+    return static_cast<uint32_t>(std::max(std::lround(static_cast<float>(size) * scale), 1L));
+  };
+  return {.width = scaled(extent.width), .height = scaled(extent.height)};
+}
+
 } // namespace
 
 bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain, gfx::FrameRing &frame_ring) {
@@ -88,13 +113,6 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain, gfx::F
     log::error("Failed to create the pipelines");
     return false;
   }
-
-  // No swapchain means the window starts minimized. resize() creates the
-  // view target once the swapchain exists.
-  if (swapchain_->handle() && !updateViewTarget(swapchain_->extent())) {
-    log::error("Failed to create the view target");
-    return false;
-  }
   return true;
 }
 
@@ -112,7 +130,11 @@ void Renderer::shutdown() {
   meshes_.clear();
   obj_meshes_.clear();
 
-  destroyViewTarget(*device_, *frame_ring_, textures_, view_target_);
+  for (View &view : views_) {
+    destroyView(view);
+  }
+  views_.clear();
+  free_composite_materials_.clear();
   textures_.shutdown();
 
   for (gfx::Buffer &buffer : frame_buffers_) {
@@ -127,34 +149,67 @@ void Renderer::shutdown() {
   uploader_.shutdown();
 }
 
-bool Renderer::resize(VkExtent2D extent) {
-  // A minimized window keeps its target, since nothing renders until it's
-  // restored.
-  if (extent.width == 0 || extent.height == 0) {
-    return true;
+std::optional<uint32_t> Renderer::prepareView(ViewId id, VkExtent2D target_extent) {
+  const auto it = std::ranges::find(views_, id, &View::id);
+  uint32_t index = 0;
+  if (it == views_.end()) {
+    const std::optional<ViewTarget> target = createViewTarget(*device_, textures_, target_extent);
+    if (!target) {
+      return std::nullopt;
+    }
+    MaterialId material;
+    if (!free_composite_materials_.empty()) {
+      material = free_composite_materials_.back();
+      free_composite_materials_.pop_back();
+    } else {
+      material = materials_.create(composite_shader_);
+      materials_.set(material, "sampler", gfx::Sampler::LinearClamp);
+    }
+    views_.push_back({.id = id, .target = *target, .composite_material = material});
+    index = static_cast<uint32_t>(views_.size() - 1);
+  } else {
+    index = static_cast<uint32_t>(it - views_.begin());
+    View &view = views_[index];
+    const bool same_size =
+        view.target.extent.width == target_extent.width && view.target.extent.height == target_extent.height;
+    if (same_size) {
+      view.last_used_frame = frame_count_;
+      return index;
+    }
+    if (!resizeViewTarget(*device_, *frame_ring_, textures_, view.target, target_extent)) {
+      return std::nullopt;
+    }
   }
-  return updateViewTarget(extent);
+
+  View &view = views_[index];
+  view.last_used_frame = frame_count_;
+  // The material holds the bindless slot, which changes with every new image.
+  materials_.set(view.composite_material, "source", view.target.color);
+  return index;
 }
 
-bool Renderer::updateViewTarget(VkExtent2D extent) {
-  if (textures_.valid(view_target_.color)) {
-    if (!resizeViewTarget(*device_, *frame_ring_, textures_, view_target_, extent)) {
-      return false;
+void Renderer::evictUnusedViews() {
+  for (View &view : views_) {
+    if (frame_count_ - view.last_used_frame > kViewKeepFrames) {
+      destroyView(view);
     }
-  } else if (const std::optional<ViewTarget> created = createViewTarget(*device_, textures_, extent)) {
-    view_target_ = *created;
-  } else {
-    return false;
   }
-  // The material holds the bindless slot, which changes with every new image.
-  return materials_.set(composite_material_, "source", view_target_.color);
+  std::erase_if(views_, [](const View &view) { return !view.composite_material.valid(); });
+}
+
+void Renderer::destroyView(View &view) {
+  destroyViewTarget(*device_, *frame_ring_, textures_, view.target);
+  if (view.composite_material.valid()) {
+    free_composite_materials_.push_back(view.composite_material);
+  }
+  view.composite_material = {};
 }
 
 bool Renderer::createFrameBuffers() {
   // One per frame in flight, so the CPU writes one while
   // the GPU may still be reading the other.
   for (gfx::Buffer &buffer : frame_buffers_) {
-    const std::optional<gfx::Buffer> created = gfx::createBuffer(*device_, sizeof(FrameData), 0);
+    const std::optional<gfx::Buffer> created = gfx::createBuffer(*device_, kMaxViews * kFrameDataStride, 0);
     if (!created) {
       return false;
     }
@@ -191,8 +246,6 @@ bool Renderer::createPipelines() {
   }
 
   composite_shader_ = *composite;
-  composite_material_ = materials_.create(composite_shader_);
-  materials_.set(composite_material_, "sampler", gfx::Sampler::LinearClamp);
 
   return true;
 }
@@ -285,60 +338,100 @@ void Renderer::deferDestroyMesh(const Mesh &mesh) {
 }
 
 void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
-  assert(textures_.valid(view_target_.color) && "render needs a view target");
   gfx::CommandList cmd(ctx.cmd);
   bindless_bound_ = false;
+  ++frame_count_;
+  // First, so indices into views_ stay valid for the rest of the frame.
+  evictUnusedViews();
 
-  // The aspect comes from the target.
-  const VkExtent2D extent = view_target_.extent;
-  const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-  const Mat4 view_projection = projectionMatrix(desc.camera.projection, aspect) * viewMatrix(desc.camera);
+  assert(desc.views.size() <= kMaxViews && "Too many views in FrameDesc");
+  const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
+  const VkExtent2D screen = swapchain_->extent();
+  std::array<FrameView, kMaxViews> frame_views{};
+  uint32_t view_count = 0;
+  for (const ViewDesc &view_desc : desc.views) {
+    if (view_count == kMaxViews) {
+      break;
+    }
+    const std::span<const FrameView> earlier(frame_views.data(), view_count);
+    const bool duplicate =
+        std::ranges::any_of(earlier, [&](const FrameView &other) { return other.desc->id == view_desc.id; });
+    assert(!duplicate && "Two views in one frame share an id");
+    const VkRect2D rect = pixelRect(view_desc.region, screen);
+    if (duplicate || rect.extent.width == 0 || rect.extent.height == 0) {
+      continue;
+    }
+    const std::optional<uint32_t> index =
+        prepareView(view_desc.id, scaledExtent(rect.extent, view_desc.resolution_scale));
+    if (!index) {
+      continue;
+    }
 
-  const FrameData frame_data{
-      .view_projection = toGlm(view_projection),
-      .camera_position = toGlm(desc.camera.transform.position),
-      .time = desc.time,
-      .light_direction = toGlm(desc.light.direction),
-      .light_color = toGlm(desc.light.color),
-      .ambient = toGlm(desc.light.ambient)};
-  gfx::writeBuffer(*device_, frame_buffers_[ctx.frame_slot], std::as_bytes(std::span(&frame_data, 1)));
+    // The aspect comes from the target, so a half screen view gets its own.
+    const VkExtent2D extent = views_[*index].target.extent;
+    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+    const Mat4 view_projection = projectionMatrix(view_desc.camera.projection, aspect) * viewMatrix(view_desc.camera);
+    const FrameData frame_data{
+        .view_projection = toGlm(view_projection),
+        .camera_position = toGlm(view_desc.camera.transform.position),
+        .time = desc.time,
+        .light_direction = toGlm(desc.light.direction),
+        .light_color = toGlm(desc.light.color),
+        .ambient = toGlm(desc.light.ambient)};
+    const VkDeviceSize offset = view_count * kFrameDataStride;
+    gfx::writeBuffer(*device_, frame_buffer, std::as_bytes(std::span(&frame_data, 1)), offset);
+
+    frame_views[view_count++] = {
+        .desc = &view_desc, .view_index = *index, .rect = rect, .frame_data = frame_buffer.address + offset};
+  }
+  const std::span<const FrameView> views(frame_views.data(), view_count);
+
   materials_.upload(ctx.frame_slot);
+  sortDraws(desc);
 
-  const VkImage view_color = textures_.image(view_target_.color).handle;
+  static_assert(2 * kMaxViews <= gfx::CommandList::kMaxTransitions);
+  std::array<gfx::ImageTransition, 2 * kMaxViews> scene_transitions{};
+  for (uint32_t i = 0; i < view_count; ++i) {
+    const ViewTarget &target = views_[views[i].view_index].target;
+    scene_transitions[2 * i] = {
+        .image = textures_.image(target.color).handle,
+        .from = gfx::ResourceState::ShaderRead,
+        .to = gfx::ResourceState::ColorTarget,
+        .discard = true};
+    scene_transitions[2 * i + 1] = {
+        .image = target.depth.handle,
+        .from = gfx::ResourceState::DepthTarget,
+        .to = gfx::ResourceState::DepthTarget,
+        .discard = true,
+        .aspect = target.depth.aspect};
+  }
+  cmd.transition(std::span(scene_transitions.data(), 2 * view_count));
+  for (const FrameView &view : views) {
+    recordScene(cmd, ctx, desc, view);
+  }
+
   const VkImage swapchain_image = swapchain_->image(ctx.image_index);
-
-  // The view target is shared by every frame in flight, so clearing it waits
-  // for the previous frame's composite reads and depth writes. Between frames
-  // the color image is always in ShaderRead.
-  const std::array<gfx::ImageTransition, 2> scene_transitions{{
-      {.image = view_color,
-       .from = gfx::ResourceState::ShaderRead,
-       .to = gfx::ResourceState::ColorTarget,
-       .discard = true},
-      {.image = view_target_.depth.handle,
-       .from = gfx::ResourceState::DepthTarget,
-       .to = gfx::ResourceState::DepthTarget,
-       .discard = true,
-       .aspect = view_target_.depth.aspect},
-  }};
-  cmd.transition(scene_transitions);
-  recordScene(cmd, ctx, desc);
-
-  const std::array<gfx::ImageTransition, 2> composite_transitions{{
-      {.image = view_color, .from = gfx::ResourceState::ColorTarget, .to = gfx::ResourceState::ShaderRead},
-      {.image = swapchain_image,
-       .from = gfx::ResourceState::Present,
-       .to = gfx::ResourceState::ColorTarget,
-       .discard = true},
-  }};
-  cmd.transition(composite_transitions);
-  recordComposite(cmd, ctx);
+  static_assert(kMaxViews + 1 <= gfx::CommandList::kMaxTransitions);
+  std::array<gfx::ImageTransition, kMaxViews + 1> composite_transitions{};
+  for (uint32_t i = 0; i < view_count; ++i) {
+    composite_transitions[i] = {
+        .image = textures_.image(views_[views[i].view_index].target.color).handle,
+        .from = gfx::ResourceState::ColorTarget,
+        .to = gfx::ResourceState::ShaderRead};
+  }
+  composite_transitions[view_count] = {
+      .image = swapchain_image,
+      .from = gfx::ResourceState::Present,
+      .to = gfx::ResourceState::ColorTarget,
+      .discard = true};
+  cmd.transition(std::span(composite_transitions.data(), view_count + 1));
+  recordComposite(cmd, ctx, views);
 
   cmd.transition(
       {.image = swapchain_image, .from = gfx::ResourceState::ColorTarget, .to = gfx::ResourceState::Present});
 }
 
-void Renderer::recordScene(gfx::CommandList &cmd, const gfx::FrameContext &ctx, const FrameDesc &desc) {
+void Renderer::sortDraws(const FrameDesc &desc) {
   // Opaque draws first, then blended ones over them.
   draw_order_.clear();
   for (uint32_t i = 0; i < desc.draws.size(); ++i) {
@@ -355,18 +448,20 @@ void Renderer::recordScene(gfx::CommandList &cmd, const gfx::FrameContext &ctx, 
     return std::pair(blended, shader.index);
   };
   std::ranges::stable_sort(draw_order_, [&](uint32_t a, uint32_t b) { return sort_key(a) < sort_key(b); });
+}
 
-  const VkExtent2D extent = view_target_.extent;
+void Renderer::recordScene(
+    gfx::CommandList &cmd, const gfx::FrameContext &ctx, const FrameDesc &desc, const FrameView &view) {
+  const ViewTarget &target = views_[view.view_index].target;
   const gfx::ColorAttachment color_attachment{
-      .view = textures_.image(view_target_.color).view, .clear_color = {0.01f, 0.01f, 0.01f, 1.0f}};
+      .view = textures_.image(target.color).view, .clear_color = view.desc->clear_color};
   cmd.beginRendering(
-      {.extent = extent,
+      {.extent = target.extent,
        .colors = {&color_attachment, 1},
-       .depth = gfx::DepthAttachment{.view = view_target_.depth.view}});
-  cmd.setViewport(extent);
-  cmd.setScissor(extent);
+       .depth = gfx::DepthAttachment{.view = target.depth.view}});
+  cmd.setViewport(target.extent);
+  cmd.setScissor(target.extent);
 
-  const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
   gfx::ShaderId bound_shader;
   for (const uint32_t draw_index : draw_order_) {
     const DrawItem &draw = desc.draws[draw_index];
@@ -393,7 +488,7 @@ void Renderer::recordScene(gfx::CommandList &cmd, const gfx::FrameContext &ctx, 
     cmd.pushConstants(
         PushConstants{
             .transform = toGlm(draw.transform.toMatrix()),
-            .frame_data = frame_buffer.address,
+            .frame_data = view.frame_data,
             .material = materials_.address(draw.material, ctx.frame_slot),
             .vertex_buffer = mesh.vertex_buffer.address,
             .draw_id = draw_index});
@@ -402,19 +497,22 @@ void Renderer::recordScene(gfx::CommandList &cmd, const gfx::FrameContext &ctx, 
   cmd.endRendering();
 }
 
-void Renderer::recordComposite(gfx::CommandList &cmd, const gfx::FrameContext &ctx) {
-  const VkExtent2D extent = swapchain_->extent();
+void Renderer::recordComposite(gfx::CommandList &cmd, const gfx::FrameContext &ctx, std::span<const FrameView> views) {
   // Black shows wherever no view covers the screen.
   const gfx::ColorAttachment color_attachment{
       .view = swapchain_->imageView(ctx.image_index), .clear_color = {0.0f, 0.0f, 0.0f, 1.0f}};
-  cmd.beginRendering({.extent = extent, .colors = {&color_attachment, 1}});
-  cmd.setViewport(extent);
-  cmd.setScissor(extent);
+  cmd.beginRendering({.extent = swapchain_->extent(), .colors = {&color_attachment, 1}});
+  if (!views.empty()) {
+    bindShader(cmd, composite_shader_);
+  }
 
-  // A fullscreen triangle built from the vertex id, so no buffers.
-  bindShader(cmd, composite_shader_);
-  cmd.pushConstants(PushConstants{.material = materials_.address(composite_material_, ctx.frame_slot)});
-  cmd.draw(3);
+  for (const FrameView &view : views) {
+    cmd.setViewport(view.rect);
+    cmd.setScissor(view.rect);
+    cmd.pushConstants(
+        PushConstants{.material = materials_.address(views_[view.view_index].composite_material, ctx.frame_slot)});
+    cmd.draw(3);
+  }
   cmd.endRendering();
 }
 

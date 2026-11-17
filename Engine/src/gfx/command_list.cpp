@@ -225,22 +225,23 @@ void CommandList::endRendering() {
   inside_rendering_ = false;
 }
 
-void CommandList::setViewport(VkExtent2D extent) {
+void CommandList::setViewport(VkExtent2D extent) { setViewport(VkRect2D{.extent = extent}); }
+
+void CommandList::setScissor(VkExtent2D extent) { setScissor(VkRect2D{.extent = extent}); }
+
+void CommandList::setViewport(VkRect2D rect) {
   const VkViewport viewport{
-      .x = 0.0f,
-      .y = 0.0f,
-      .width = static_cast<float>(extent.width),
-      .height = static_cast<float>(extent.height),
+      .x = static_cast<float>(rect.offset.x),
+      .y = static_cast<float>(rect.offset.y),
+      .width = static_cast<float>(rect.extent.width),
+      .height = static_cast<float>(rect.extent.height),
       .minDepth = 0.0f,
       .maxDepth = 1.0f,
   };
   vkCmdSetViewport(buffer_, 0, 1, &viewport);
 }
 
-void CommandList::setScissor(VkExtent2D extent) {
-  const VkRect2D scissor{.offset{.x = 0, .y = 0}, .extent = extent};
-  vkCmdSetScissor(buffer_, 0, 1, &scissor);
-}
+void CommandList::setScissor(VkRect2D rect) { vkCmdSetScissor(buffer_, 0, 1, &rect); }
 
 void CommandList::setCullMode(CullMode mode) {
   VkCullModeFlags flags = VK_CULL_MODE_BACK_BIT;

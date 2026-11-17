@@ -80,9 +80,11 @@ public:
   void beginRendering(const RenderingDesc &desc);
   void endRendering();
 
-  // Dynamic state, covering the whole target with a [0, 1] depth range.
+  // Dynamic state with a [0, 1] depth range.
   void setViewport(VkExtent2D extent);
   void setScissor(VkExtent2D extent);
+  void setViewport(VkRect2D rect);
+  void setScissor(VkRect2D rect);
   void setCullMode(CullMode mode);
   void setDepthMode(DepthMode mode);
 
@@ -100,9 +102,11 @@ public:
       uint32_t first_instance = 0);
   void draw(uint32_t vertex_count, uint32_t instance_count = 1, uint32_t first_vertex = 0, uint32_t first_instance = 0);
 
+  // The most transitions one call takes.
+  static constexpr uint32_t kMaxTransitions = 16;
+
 private:
   static constexpr uint32_t kMaxColorAttachments = 8;
-  static constexpr uint32_t kMaxTransitions = 16;
 
   void pushConstantsBytes(const void *data, uint32_t size);
 

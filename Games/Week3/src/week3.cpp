@@ -18,6 +18,7 @@ constexpr Vec3 kCameraTarget(0.0f, 0.0f, 2.0f);
 constexpr float kNearPlane = 0.1f;
 constexpr float kFarPlane = 100.0f;
 constexpr float kOrthographicHeight = 6.0f;
+constexpr renderer::ViewId kMainView{0};
 
 void cycleDebugView(strafe::renderer::Renderer &renderer) {
   using strafe::renderer::DebugView;
@@ -79,14 +80,16 @@ void Week3::onEvent(Engine &engine, const SDL_Event &event) {
 void Week3::onUpdate(Engine & /* engine */, float delta_seconds) { time_ += delta_seconds; }
 
 void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
-  const Vec3 eye(5.0f * std::sin(time_ * 0.25f), 2.5f, 5.0f * std::cos(time_ * 0.25f));
-  frame.camera.transform.position = eye;
-  frame.camera.lookAt(kCameraTarget);
-  frame.camera.projection = perspective_
+  renderer::Camera camera;
+  camera.transform.position = Vec3(5.0f * std::sin(time_ * 0.25f), 2.5f, 5.0f * std::cos(time_ * 0.25f));
+  camera.lookAt(kCameraTarget);
+  camera.projection = perspective_
       ? renderer::Projection{renderer::Perspective{
             .fov_y = radians(60.0f), .near_plane = kNearPlane, .far_plane = kFarPlane}}
       : renderer::Projection{
             renderer::Orthographic{.height = kOrthographicHeight, .near_plane = kNearPlane, .far_plane = kFarPlane}};
+
+  frame.views.push_back({.id = kMainView, .camera = camera});
 
   const Vec3 light_position(0.0f, 2.5f, 0.0f);
   const Vec3 light_target(5.0f * std::sin(time_ * 2.5f), 0.0f, 5.0f * std::cos(time_ * 2.5f));

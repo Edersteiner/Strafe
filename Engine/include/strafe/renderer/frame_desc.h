@@ -2,9 +2,9 @@
 
 #include "strafe/core/types/transform.h"
 #include "strafe/core/types/vec3.h"
-#include "strafe/renderer/camera.h"
 #include "strafe/renderer/material.h"
 #include "strafe/renderer/mesh.h"
+#include "strafe/renderer/view.h"
 
 #include <vector>
 
@@ -25,7 +25,8 @@ struct DirectionalLight {
 };
 
 struct FrameDesc {
-  Camera camera;
+  // Drawn in order, later views over earlier ones where regions overlap.
+  std::vector<ViewDesc> views;
   DirectionalLight light;
   // Seconds since startup, for animated shaders.
   float time = 0.0f;

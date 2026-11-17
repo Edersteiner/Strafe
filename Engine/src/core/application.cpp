@@ -97,12 +97,6 @@ void Application::render() {
       running_ = false;
       return;
     }
-
-    if (swapchain_.handle() && !renderer_.resize(swapchain_.extent())) {
-      log::error("Cannot resize renderer!");
-      running_ = false;
-      return;
-    }
   }
 
   // Minimized, or the swapchain is out of date until the next resize.
@@ -111,11 +105,14 @@ void Application::render() {
     return;
   }
 
-  // A fresh frame each time, but the draw list keeps its allocation.
+  // A fresh frame each time, but the lists keep their allocations.
   std::vector<renderer::DrawItem> draws = std::move(frame_desc_.draws);
+  std::vector<renderer::ViewDesc> views = std::move(frame_desc_.views);
   draws.clear();
+  views.clear();
   frame_desc_ = {};
   frame_desc_.draws = std::move(draws);
+  frame_desc_.views = std::move(views);
   frame_desc_.time = time();
 
   app_.onRender(engine_, frame_desc_);
