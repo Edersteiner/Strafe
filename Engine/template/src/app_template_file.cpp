@@ -1,6 +1,5 @@
 #include "app_template_file.h"
 
-#include "strafe/core/log.h"
 #include "strafe/core/math.h"
 #include "strafe/engine.h"
 #include "strafe/renderer/camera.h"
@@ -81,13 +80,12 @@ void AppTemplateName::onEvent(Engine &engine, const SDL_Event &event) {
   }
 }
 
-void AppTemplateName::onUpdate(Engine &engine, float delta_seconds) { angle_ += kSpinSpeed * delta_seconds; }
+void AppTemplateName::onUpdate(Engine & /* engine */, float delta_seconds) { angle_ += kSpinSpeed * delta_seconds; }
 
-void AppTemplateName::onRender(Engine &engine, renderer::FrameDesc &frame) {
-  const Mat4 view = lookAt(kCameraPosition, Vec3(), Vec3(0.0f, 1.0f, 0.0f));
-  const Mat4 projection = renderer::perspective(radians(60.0f), engine.aspect(), 0.1f, 100.0f);
-  frame.view_projection = projection * view;
-  frame.camera_position = kCameraPosition;
+void AppTemplateName::onRender(Engine & /* engine */, renderer::FrameDesc &frame) {
+  frame.camera.transform.position = kCameraPosition;
+  frame.camera.lookAt(Vec3());
+  frame.camera.projection = renderer::Perspective{.fov_y = radians(60.0f), .near_plane = 0.1f, .far_plane = 100.0f};
 
   const Vec3 axis(0.3f, 1.0f, 0.2f);
   frame.draws.push_back(

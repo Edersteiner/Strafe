@@ -32,5 +32,8 @@ Quat normalize(Quat q);
 Quat inverse(Quat q);
 // Takes the shortest path between a and b.
 Quat slerp(Quat a, Quat b, float t);
+// The rotation that turns -Z towards forward, keeping +Y as close to up as it
+// can. Forward and up must not be parallel. A zero forward gives no rotation.
+Quat lookRotation(Vec3 forward, Vec3 up);
 
 } // namespace strafe

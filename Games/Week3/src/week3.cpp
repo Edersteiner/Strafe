@@ -14,7 +14,6 @@ using namespace strafe;
 
 namespace {
 
-constexpr Vec3 kCameraPosition(0.0f, 2.0f, 6.5f);
 constexpr Vec3 kCameraTarget(0.0f, 0.0f, 2.0f);
 constexpr float kNearPlane = 0.1f;
 constexpr float kFarPlane = 100.0f;
@@ -80,14 +79,14 @@ void Week3::onEvent(Engine &engine, const SDL_Event &event) {
 void Week3::onUpdate(Engine & /* engine */, float delta_seconds) { time_ += delta_seconds; }
 
 void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
-  const float aspect = engine.aspect();
   const Vec3 eye(5.0f * std::sin(time_ * 0.25f), 2.5f, 5.0f * std::cos(time_ * 0.25f));
-  const Mat4 view = lookAt(eye, kCameraTarget, Vec3(0.0f, 1.0f, 0.0f));
-  const Mat4 projection = perspective_ ? renderer::perspective(radians(60.0f), aspect, kNearPlane, kFarPlane)
-                                       : renderer::orthographic(kOrthographicHeight, aspect, kNearPlane, kFarPlane);
-
-  frame.view_projection = projection * view;
-  frame.camera_position = kCameraPosition;
+  frame.camera.transform.position = eye;
+  frame.camera.lookAt(kCameraTarget);
+  frame.camera.projection = perspective_
+      ? renderer::Projection{renderer::Perspective{
+            .fov_y = radians(60.0f), .near_plane = kNearPlane, .far_plane = kFarPlane}}
+      : renderer::Projection{
+            renderer::Orthographic{.height = kOrthographicHeight, .near_plane = kNearPlane, .far_plane = kFarPlane}};
 
   const Vec3 light_position(0.0f, 2.5f, 0.0f);
   const Vec3 light_target(5.0f * std::sin(time_ * 2.5f), 0.0f, 5.0f * std::cos(time_ * 2.5f));

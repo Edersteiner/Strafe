@@ -1,8 +1,8 @@
 #pragma once
 
-#include "strafe/core/types/mat4.h"
 #include "strafe/core/types/transform.h"
 #include "strafe/core/types/vec3.h"
+#include "strafe/renderer/camera.h"
 #include "strafe/renderer/material.h"
 #include "strafe/renderer/mesh.h"
 
@@ -25,8 +25,7 @@ struct DirectionalLight {
 };
 
 struct FrameDesc {
-  Mat4 view_projection;
-  Vec3 camera_position;
+  Camera camera;
   DirectionalLight light;
   // Seconds since startup, for animated shaders.
   float time = 0.0f;

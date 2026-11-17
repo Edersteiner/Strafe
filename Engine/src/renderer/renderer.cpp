@@ -289,9 +289,14 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
   gfx::CommandList cmd(ctx.cmd);
   bindless_bound_ = false;
 
+  // The aspect comes from the target.
+  const VkExtent2D extent = view_target_.extent;
+  const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+  const Mat4 view_projection = projectionMatrix(desc.camera.projection, aspect) * viewMatrix(desc.camera);
+
   const FrameData frame_data{
-      .view_projection = toGlm(desc.view_projection),
-      .camera_position = toGlm(desc.camera_position),
+      .view_projection = toGlm(view_projection),
+      .camera_position = toGlm(desc.camera.transform.position),
       .time = desc.time,
       .light_direction = toGlm(desc.light.direction),
       .light_color = toGlm(desc.light.color),

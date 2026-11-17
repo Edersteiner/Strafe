@@ -4,12 +4,9 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace strafe::renderer {
+#include <type_traits>
 
-// glm builds matrices for OpenGL's Y-up clip space. Negating [1][1] flips Y,
-// and passing the far plane as near reverses the depth range. Floats hold far
-// more precision near 0, so reverse-Z spends it on distant geometry, where a
-// standard projection packs depth values tightly together.
+namespace strafe::renderer {
 
 Mat4 perspective(float fov_y, float aspect, float near_plane, float far_plane) {
   glm::mat4 projection = glm::perspectiveRH_ZO(fov_y, aspect, far_plane, near_plane);
@@ -23,6 +20,26 @@ Mat4 orthographic(float height, float aspect, float near_plane, float far_plane)
   glm::mat4 projection = glm::orthoRH_ZO(-half_width, half_width, -half_height, half_height, far_plane, near_plane);
   projection[1][1] *= -1.0f;
   return fromGlm(projection);
+}
+
+void Camera::lookAt(Vec3 target, Vec3 up) { transform.rotation = lookRotation(target - transform.position, up); }
+
+Mat4 viewMatrix(const Camera &camera) {
+  return rotation(inverse(camera.transform.rotation)) * translation(-camera.transform.position);
+}
+
+Mat4 projectionMatrix(const Projection &projection, float aspect) {
+  return std::visit(
+      [aspect](const auto &p) {
+        using T = std::decay_t<decltype(p)>;
+        if constexpr (std::is_same_v<T, Perspective>) {
+          return perspective(p.fov_y, aspect, p.near_plane, p.far_plane);
+        } else {
+          static_assert(std::is_same_v<T, Orthographic>);
+          return orthographic(p.height, aspect, p.near_plane, p.far_plane);
+        }
+      },
+      projection);
 }
 
 } // namespace strafe::renderer
