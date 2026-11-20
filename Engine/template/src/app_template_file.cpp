@@ -2,6 +2,7 @@
 
 #include "strafe/core/math.h"
 #include "strafe/engine.h"
+#include "strafe/input/input_manager.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/renderer.h"
@@ -51,6 +52,9 @@ renderer::MeshData cubeMeshData() {
 } // namespace
 
 bool AppTemplateName::onInit(Engine &engine) {
+  // Actions are named by the game. One bind lists every input that triggers it.
+  engine.input().bind("Quit", {input::Key::Escape});
+
   renderer::Renderer &renderer = engine.renderer();
 
   const renderer::MeshData cube = cubeMeshData();
@@ -74,13 +78,12 @@ bool AppTemplateName::onInit(Engine &engine) {
   return true;
 }
 
-void AppTemplateName::onEvent(Engine &engine, const SDL_Event &event) {
-  if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
+void AppTemplateName::onUpdate(Engine &engine, float delta_seconds) {
+  if (engine.input().isActionJustPressed("Quit")) {
     engine.quit();
   }
+  angle_ += kSpinSpeed * delta_seconds;
 }
-
-void AppTemplateName::onUpdate(Engine & /* engine */, float delta_seconds) { angle_ += kSpinSpeed * delta_seconds; }
 
 void AppTemplateName::onRender(Engine & /* engine */, renderer::FrameDesc &frame) {
   frame.camera.transform.position = kCameraPosition;

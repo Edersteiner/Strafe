@@ -82,7 +82,6 @@ void Application::run() {
         continue;
       }
       input_.handleEvents(event);
-      app_.onEvent(engine_, event);
     }
     if (!running_) {
       break;
