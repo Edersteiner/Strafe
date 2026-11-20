@@ -25,6 +25,12 @@ bool Application::initialize(const AppConfig &config) {
   }
   SDL_GetWindowSizeInPixels(window_, &width_, &height_);
 
+  // Gamepads are optional, so the game still runs on keyboard and mouse.
+  if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+    log::warn("Gamepads unavailable: {}", SDL_GetError());
+  }
+  input_.initialize(window_);
+
   if (!initializeVulkan()) {
     log::error("Failed to initialize Vulkan");
     return false;
@@ -63,6 +69,7 @@ void Application::run() {
   running_ = true;
   uint64_t last_ticks_ns = SDL_GetTicksNS();
   while (running_) {
+    input_.beginFrame();
     SDL_Event event{0};
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_EVENT_QUIT) {
@@ -74,11 +81,13 @@ void Application::run() {
         swapchain_.markForRecreate();
         continue;
       }
+      input_.handleEvents(event);
       app_.onEvent(engine_, event);
     }
     if (!running_) {
       break;
     }
+    input_.update();
 
     const uint64_t now_ns = SDL_GetTicksNS();
     const float delta_seconds = static_cast<float>(now_ns - last_ticks_ns) / 1'000'000'000.0f;
@@ -137,6 +146,7 @@ void Application::shutdown() {
   swapchain_.shutdown();
   device_.shutdown();
 
+  input_.shutdown();
   if (window_) {
     SDL_DestroyWindow(window_);
     window_ = nullptr;
@@ -157,6 +167,7 @@ float Application::time() const { return static_cast<float>(SDL_GetTicksNS() - s
 // Engine forwards to the Application that owns it.
 
 renderer::Renderer &Engine::renderer() { return application_->renderer(); }
+input::InputManager &Engine::input() { return application_->input(); }
 float Engine::aspect() const { return application_->aspect(); }
 float Engine::time() const { return application_->time(); }
 void Engine::quit() { application_->quit(); }

@@ -2,6 +2,7 @@
 
 #include "strafe/core/math.h"
 #include "strafe/engine.h"
+#include "strafe/input/input_manager.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/renderer.h"
@@ -29,6 +30,10 @@ void cycleDebugView(strafe::renderer::Renderer &renderer) {
 } // namespace
 
 bool Week3::onInit(Engine &engine) {
+  input::InputManager &input = engine.input();
+  input.bind("ToggleProjection", {input::Key::P, input::GamepadButton::North});
+  input.bind("CycleDebugView", {input::Key::D, input::GamepadButton::West});
+
   renderer::Renderer &renderer = engine.renderer();
 
   if (auto tex = renderer::loadTexture("assets/textures/redead_grp.png")) {
@@ -67,16 +72,17 @@ bool Week3::onInit(Engine &engine) {
   return true;
 }
 
-void Week3::onEvent(Engine &engine, const SDL_Event &event) {
-  if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_P) {
+void Week3::onUpdate(Engine &engine, float delta_seconds) {
+  time_ += delta_seconds;
+
+  const input::InputManager &input = engine.input();
+  if (input.isActionJustPressed("ToggleProjection")) {
     perspective_ = !perspective_;
   }
-  if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_D) {
+  if (input.isActionJustPressed("CycleDebugView")) {
     cycleDebugView(engine.renderer());
   }
 }
-
-void Week3::onUpdate(Engine & /* engine */, float delta_seconds) { time_ += delta_seconds; }
 
 void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
   renderer::Camera &camera = frame.camera;

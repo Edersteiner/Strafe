@@ -5,6 +5,7 @@
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
 #include "strafe/gfx/swapchain.h"
+#include "strafe/input/input_manager.h"
 #include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/renderer.h"
 
@@ -29,6 +30,7 @@ public:
 
   // Behind Engine.
   renderer::Renderer &renderer() { return renderer_; }
+  input::InputManager &input() { return input_; }
   float aspect() const;
   float time() const;
   void quit() { running_ = false; }
@@ -51,6 +53,7 @@ private:
   gfx::Swapchain swapchain_;
   gfx::FrameRing frame_ring_;
 
+  input::InputManager input_;
   renderer::Renderer renderer_;
   renderer::FrameDesc frame_desc_;
 };
