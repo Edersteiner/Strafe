@@ -6,6 +6,9 @@
 #include "strafe/renderer/material.h"
 #include "strafe/renderer/mesh.h"
 
+#include <array>
+#include <cstdint>
+
 // Week 4: a first person flying camera and splitscreen.
 //
 // Assets go in assets/ and shaders in shaders/ next to this app's xmake.lua.
@@ -18,11 +21,14 @@ public:
   void onRender(strafe::Engine &engine, strafe::renderer::FrameDesc &frame) override;
 
 private:
+  static constexpr uint8_t kPlayerCount = 2;
+
   void setMouseCaptured(strafe::Engine &engine, bool captured);
 
   strafe::renderer::MeshId cube_;
   strafe::renderer::MaterialId material_;
+  std::array<strafe::renderer::MaterialId, kPlayerCount> player_materials_;
 
-  FlyCamera camera_;
+  std::array<FlyCamera, kPlayerCount> cameras_;
   bool mouse_captured_ = false;
 };

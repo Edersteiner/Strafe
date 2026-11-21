@@ -15,7 +15,16 @@ using namespace strafe;
 
 namespace {
 
-constexpr Vec3 kCameraPosition(0.0f, 1.5f, 4.0f);
+constexpr std::array<Vec3, 2> kStartPositions{{{0.0f, 1.5f, 4.0f}, {0.0f, 1.5f, -4.0f}}};
+constexpr std::array<Vec4, 2> kPlayerTints{{{0.2f, 0.5f, 0.95f, 1.0f}, {0.95f, 0.25f, 0.3f, 1.0f}}};
+
+constexpr float kMarkerSize = 0.3f;
+
+renderer::Camera cameraFor(const FlyCamera &fly_camera) {
+  return {
+      .transform = {.position = fly_camera.position, .rotation = fly_camera.rotation()},
+      .projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f}};
+}
 
 // A unit cube centred on the origin, with one flat-shaded quad per face.
 renderer::MeshData cubeMeshData() {
@@ -57,9 +66,12 @@ bool Week4::onInit(Engine &engine) {
   // Escape frees a captured mouse first, and quits once it is free.
   input.bind("Quit", {input::Key::Escape});
   input.bind("CaptureMouse", {input::MouseButton::Left});
+  input.bind("ToggleSplitscreen", {input::Key::Tab, input::GamepadButton::Back});
 
-  camera_.position = kCameraPosition;
-  camera_.lookAt(Vec3());
+  for (size_t i = 0; i < cameras_.size(); ++i) {
+    cameras_[i].position = kStartPositions[i];
+    cameras_[i].lookAt(Vec3());
+  }
   setMouseCaptured(engine, true);
 
   renderer::Renderer &renderer = engine.renderer();
@@ -82,11 +94,20 @@ bool Week4::onInit(Engine &engine) {
   // Fields of LitParams in lit.slang, by name. "albedo" is left unset, so it
   // samples the 1x1 white texture.
   renderer.setParam(material_, "tint", Vec4(0.9f, 0.55f, 0.2f, 1.0f));
+
+  for (size_t i = 0; i < player_materials_.size(); ++i) {
+    const std::optional<renderer::MaterialId> player_material = renderer.createMaterial(*lit);
+    if (!player_material) {
+      return false;
+    }
+    player_materials_[i] = *player_material;
+    renderer.setParam(player_materials_[i], "tint", kPlayerTints[i]);
+  }
   return true;
 }
 
 void Week4::onUpdate(Engine &engine, float delta_seconds) {
-  const input::InputManager &input = engine.input();
+  input::InputManager &input = engine.input();
   if (input.isActionJustPressed("Quit")) {
     if (mouse_captured_) {
       setMouseCaptured(engine, false);
@@ -97,7 +118,14 @@ void Week4::onUpdate(Engine &engine, float delta_seconds) {
     setMouseCaptured(engine, true);
   }
 
-  camera_.update(input, 0, delta_seconds, mouse_captured_);
+  // Keyboard and mouse stay with player 0, the first gamepad moves to player 1.
+  if (input.isActionJustPressed("ToggleSplitscreen")) {
+    input.setPlayerCount(input.playerCount() == 1 ? kPlayerCount : 1);
+  }
+
+  for (uint8_t player = 0; player < input.playerCount(); ++player) {
+    cameras_[player].update(input, player, delta_seconds, mouse_captured_ && player == 0);
+  }
 }
 
 void Week4::setMouseCaptured(Engine &engine, bool captured) {
@@ -105,10 +133,22 @@ void Week4::setMouseCaptured(Engine &engine, bool captured) {
   mouse_captured_ = captured;
 }
 
-void Week4::onRender(Engine & /* engine */, renderer::FrameDesc &frame) {
-  frame.camera.transform.position = camera_.position;
-  frame.camera.transform.rotation = camera_.rotation();
-  frame.camera.projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f};
+void Week4::onRender(Engine &engine, renderer::FrameDesc &frame) {
+  const uint8_t player_count = engine.input().playerCount();
+  if (player_count == 1) {
+    frame.camera = cameraFor(cameras_[0]);
+  } else {
+    frame.views.push_back({.id = {0}, .camera = cameraFor(cameras_[0]), .region = renderer::ScreenRegion::left()});
+    frame.views.push_back({.id = {1}, .camera = cameraFor(cameras_[1]), .region = renderer::ScreenRegion::right()});
+  }
 
   frame.draws.push_back({.mesh = cube_, .material = material_});
+
+  for (uint8_t player = 0; player < player_count; ++player) {
+    const FlyCamera &camera = cameras_[player];
+    frame.draws.push_back(
+        {.mesh = cube_,
+         .material = player_materials_[player],
+         .transform = {.position = camera.position, .rotation = camera.rotation(), .scale = Vec3(kMarkerSize)}});
+  }
 }

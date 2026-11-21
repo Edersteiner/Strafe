@@ -197,15 +197,20 @@ void InputManager::updateActions() {
     for (uint8_t player = 0; player < kMaxPlayers; ++player) {
       InputAction::PlayerState &state = action.players[player];
       const bool was_pressed = state.pressed;
-      state.axis_value = 0.0f;
-      for (const InputBinding &binding : action.bindings) {
-        state.axis_value = std::max(state.axis_value, readBinding(binding, player));
-      }
+      state.axis_value = readAction(action, player);
       state.pressed = state.axis_value >= kPressThreshold;
       state.just_pressed = state.pressed && !was_pressed;
       state.just_released = !state.pressed && was_pressed;
     }
   }
+}
+
+float InputManager::readAction(const InputAction &action, uint8_t player) const {
+  float value = 0.0f;
+  for (const InputBinding &binding : action.bindings) {
+    value = std::max(value, readBinding(binding, player));
+  }
+  return value;
 }
 
 float InputManager::readBinding(const InputBinding &binding, uint8_t player) const {
@@ -263,6 +268,16 @@ void InputManager::assignDevices() {
       gamepads_[i].player = 0;
     } else {
       gamepads_[i].player = i + 1 < player_count_ ? static_cast<uint8_t>(i + 1) : kNoPlayer;
+    }
+  }
+
+  // Rebaselines every player under the new owners, so an input held while it
+  // changes hands fires no edges on the next update.
+  for (auto &[name, action] : actions_) {
+    for (uint8_t player = 0; player < kMaxPlayers; ++player) {
+      InputAction::PlayerState &state = action.players[player];
+      state.axis_value = readAction(action, player);
+      state.pressed = state.axis_value >= kPressThreshold;
     }
   }
 }

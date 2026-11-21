@@ -125,6 +125,7 @@ private:
   void removeGamepad(uint32_t id);
   void assignDevices();
   float readBinding(const InputBinding &binding, uint8_t player) const;
+  float readAction(const InputAction &action, uint8_t player) const;
   const InputAction *findAction(std::string_view action_name) const;
   template <typename Predicate>
   bool anyPlayer(std::string_view action_name, uint8_t player_id, Predicate predicate) const;
