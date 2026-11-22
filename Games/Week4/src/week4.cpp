@@ -5,10 +5,12 @@
 #include "strafe/input/input_manager.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
+#include "strafe/renderer/obj_loader.h"
 #include "strafe/renderer/renderer.h"
 
 #include <array>
 #include <cstdint>
+#include <numbers>
 #include <optional>
 
 using namespace strafe;
@@ -19,6 +21,7 @@ constexpr std::array<Vec3, 2> kStartPositions{{{0.0f, 1.5f, 4.0f}, {0.0f, 1.5f, 
 constexpr std::array<Vec4, 2> kPlayerTints{{{0.2f, 0.5f, 0.95f, 1.0f}, {0.95f, 0.25f, 0.3f, 1.0f}}};
 
 constexpr float kMarkerSize = 0.3f;
+constexpr float kMarkerBackOffset = 0.35f;
 
 renderer::Camera cameraFor(const FlyCamera &fly_camera) {
   return {
@@ -88,7 +91,16 @@ bool Week4::onInit(Engine &engine) {
   if (!material) {
     return false;
   }
+  const std::optional<renderer::MeshData> suzanne = renderer::loadFromObj("assets/models/suzanne.obj");
+  if (!suzanne) {
+    return false;
+  }
+  const std::optional<renderer::MeshId> player_mesh = renderer.createMesh(suzanne->vertices, suzanne->indices);
+  if (!player_mesh) {
+    return false;
+  }
   cube_ = *mesh;
+  player_mesh_ = *player_mesh;
   material_ = *material;
 
   // Fields of LitParams in lit.slang, by name. "albedo" is left unset, so it
@@ -146,9 +158,14 @@ void Week4::onRender(Engine &engine, renderer::FrameDesc &frame) {
 
   for (uint8_t player = 0; player < player_count; ++player) {
     const FlyCamera &camera = cameras_[player];
+    const Quat rotation = camera.rotation();
+    const Quat facing = Quat::fromAxisAngle(Vec3(0.0f, 1.0f, 0.0f), std::numbers::pi_v<float>);
     frame.draws.push_back(
-        {.mesh = cube_,
+        {.mesh = player_mesh_,
          .material = player_materials_[player],
-         .transform = {.position = camera.position, .rotation = camera.rotation(), .scale = Vec3(kMarkerSize)}});
+         .transform = {
+             .position = camera.position + rotation * Vec3(0.0f, 0.0f, kMarkerBackOffset),
+             .rotation = rotation * facing,
+             .scale = Vec3(kMarkerSize)}});
   }
 }

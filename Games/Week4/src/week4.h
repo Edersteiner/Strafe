@@ -10,10 +10,6 @@
 #include <cstdint>
 
 // Week 4: a first person flying camera and splitscreen.
-//
-// Assets go in assets/ and shaders in shaders/ next to this app's xmake.lua.
-// Both are copied next to the exe on every build, and paths are relative to
-// the exe, e.g. "assets/models/thing.obj".
 class Week4 : public strafe::App {
 public:
   bool onInit(strafe::Engine &engine) override;
@@ -26,6 +22,7 @@ private:
   void setMouseCaptured(strafe::Engine &engine, bool captured);
 
   strafe::renderer::MeshId cube_;
+  strafe::renderer::MeshId player_mesh_;
   strafe::renderer::MaterialId material_;
   std::array<strafe::renderer::MaterialId, kPlayerCount> player_materials_;
 
