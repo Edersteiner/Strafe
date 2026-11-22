@@ -9,6 +9,7 @@
 #include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/material.h"
 #include "strafe/renderer/mesh.h"
+#include "strafe/renderer/primitives.h"
 #include "strafe/renderer/texture.h"
 #include "strafe/renderer/texture_table.h"
 #include "strafe/renderer/view_target.h"
@@ -53,6 +54,8 @@ public:
   std::optional<MeshId> createMesh(std::span<const Vertex> vertices, std::span<const uint32_t> indices);
 
   std::optional<MeshId> uploadMesh(Mesh mesh);
+
+  MeshId primitive(Primitive primitive);
 
   // Uploads the texture once with a full mip chain. The returned id stays
   // valid until shutdown.
@@ -147,6 +150,7 @@ private:
   std::vector<Mesh> meshes_;
   // renderObj cache
   std::unordered_map<std::string, MeshId> obj_meshes_;
+  std::array<std::optional<MeshId>, static_cast<size_t>(Primitive::Count)> primitive_meshes_;
 
   gfx::ShaderId composite_shader_;
   // Reset by render(), set by bindShader.

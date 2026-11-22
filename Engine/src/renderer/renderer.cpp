@@ -129,6 +129,7 @@ void Renderer::shutdown() {
   }
   meshes_.clear();
   obj_meshes_.clear();
+  primitive_meshes_ = {};
 
   for (View &view : views_) {
     destroyView(view);
@@ -307,6 +308,15 @@ std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices, std
 
   meshes_.push_back(mesh);
   return MeshId{.index = static_cast<uint32_t>(meshes_.size() - 1)};
+}
+
+MeshId Renderer::primitive(Primitive primitive) {
+  std::optional<MeshId> &mesh = primitive_meshes_.at(static_cast<size_t>(primitive));
+  if (!mesh) {
+    const MeshData data = primitiveMeshData(primitive);
+    mesh = createMesh(data.vertices, data.indices).value_or(MeshId{});
+  }
+  return *mesh;
 }
 
 bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId material, const Transform &transform) {

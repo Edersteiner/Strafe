@@ -1,24 +1,31 @@
 #include "week4.h"
 
+#include "strafe/core/log.h"
 #include "strafe/core/math.h"
 #include "strafe/engine.h"
 #include "strafe/input/input_manager.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
-#include "strafe/renderer/obj_loader.h"
+#include "strafe/renderer/primitives.h"
 #include "strafe/renderer/renderer.h"
 
 #include <array>
 #include <cstdint>
-#include <numbers>
 #include <optional>
 
 using namespace strafe;
 
 namespace {
 
-constexpr std::array<Vec3, 2> kStartPositions{{{0.0f, 1.5f, 4.0f}, {0.0f, 1.5f, -4.0f}}};
+constexpr std::array<const char *, 3> kScenePaths{
+    "assets/scenes/courtyard.scene",
+    "assets/scenes/corridors.scene",
+    "assets/scenes/shaft.scene",
+};
+
+constexpr const char *kPlayerModel = "assets/models/suzanne.obj";
 constexpr std::array<Vec4, 2> kPlayerTints{{{0.2f, 0.5f, 0.95f, 1.0f}, {0.95f, 0.25f, 0.3f, 1.0f}}};
+constexpr Vec4 kGoalTint(1.0f, 0.8f, 0.2f, 1.0f);
 
 constexpr float kMarkerSize = 0.3f;
 constexpr float kMarkerBackOffset = 0.35f;
@@ -29,92 +36,50 @@ renderer::Camera cameraFor(const FlyCamera &fly_camera) {
       .projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f}};
 }
 
-// A unit cube centred on the origin, with one flat-shaded quad per face.
-renderer::MeshData cubeMeshData() {
-  struct Face {
-    Vec3 normal, u, v; // u x v == normal, so the corners wind CCW.
-  };
-  constexpr std::array<Face, 6> kFaces{{
-      {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
-      {{-1, 0, 0}, {0, 0, 1}, {0, 1, 0}},
-      {{0, 1, 0}, {0, 0, 1}, {1, 0, 0}},
-      {{0, -1, 0}, {1, 0, 0}, {0, 0, 1}},
-      {{0, 0, 1}, {1, 0, 0}, {0, 1, 0}},
-      {{0, 0, -1}, {0, 1, 0}, {1, 0, 0}},
-  }};
-  constexpr std::array<Vec2, 4> kCorners{{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}};
-
-  renderer::MeshData mesh;
-  for (const Face &face : kFaces) {
-    const auto first = static_cast<uint32_t>(mesh.vertices.size());
-    for (const Vec2 corner : kCorners) {
-      mesh.vertices.push_back(
-          {.position = 0.5f * (face.normal + corner.x * face.u + corner.y * face.v),
-           .uv = 0.5f * (corner + Vec2(1.0f)),
-           .normal = face.normal});
-    }
-    for (const uint32_t i : {0u, 1u, 2u, 0u, 2u, 3u}) {
-      mesh.indices.push_back(first + i);
-    }
+std::optional<renderer::MaterialId> createTinted(renderer::Renderer &renderer, gfx::ShaderId shader, Vec4 tint) {
+  const std::optional<renderer::MaterialId> material = renderer.createMaterial(shader);
+  if (material) {
+    renderer.setParam(*material, "tint", tint);
   }
-  return mesh;
+  return material;
 }
 
 } // namespace
 
 bool Week4::onInit(Engine &engine) {
-  // Actions are named by the game. One bind lists every input that triggers it.
   input::InputManager &input = engine.input();
+
   FlyCamera::bindActions(input);
-  // Escape frees a captured mouse first, and quits once it is free.
+
   input.bind("Quit", {input::Key::Escape});
   input.bind("CaptureMouse", {input::MouseButton::Left});
   input.bind("ToggleSplitscreen", {input::Key::Tab, input::GamepadButton::Back});
-
-  for (size_t i = 0; i < cameras_.size(); ++i) {
-    cameras_[i].position = kStartPositions[i];
-    cameras_[i].lookAt(Vec3());
-  }
-  setMouseCaptured(engine, true);
+  input.bind("NextScene", {input::Key::Right, input::GamepadButton::DpadRight});
+  input.bind("PreviousScene", {input::Key::Left, input::GamepadButton::DpadLeft});
+  input.bind("ReloadScene", {input::Key::R});
 
   renderer::Renderer &renderer = engine.renderer();
-
-  const renderer::MeshData cube = cubeMeshData();
-  const std::optional<renderer::MeshId> mesh = renderer.createMesh(cube.vertices, cube.indices);
-  // "lit" is one of the engine's shaders. An app shader with the same name in
-  // shaders/ would replace it.
   const std::optional<gfx::ShaderId> lit = renderer.loadShader("lit");
-  if (!mesh || !lit) {
+  if (!lit) {
     return false;
   }
-  const std::optional<renderer::MaterialId> material = renderer.createMaterial(*lit);
-  if (!material) {
-    return false;
-  }
-  const std::optional<renderer::MeshData> suzanne = renderer::loadFromObj("assets/models/suzanne.obj");
-  if (!suzanne) {
-    return false;
-  }
-  const std::optional<renderer::MeshId> player_mesh = renderer.createMesh(suzanne->vertices, suzanne->indices);
-  if (!player_mesh) {
-    return false;
-  }
-  cube_ = *mesh;
-  player_mesh_ = *player_mesh;
-  material_ = *material;
-
-  // Fields of LitParams in lit.slang, by name. "albedo" is left unset, so it
-  // samples the 1x1 white texture.
-  renderer.setParam(material_, "tint", Vec4(0.9f, 0.55f, 0.2f, 1.0f));
-
   for (size_t i = 0; i < player_materials_.size(); ++i) {
-    const std::optional<renderer::MaterialId> player_material = renderer.createMaterial(*lit);
-    if (!player_material) {
+    const std::optional<renderer::MaterialId> material = createTinted(renderer, *lit, kPlayerTints[i]);
+    if (!material) {
       return false;
     }
-    player_materials_[i] = *player_material;
-    renderer.setParam(player_materials_[i], "tint", kPlayerTints[i]);
+    player_materials_[i] = *material;
   }
+  const std::optional<renderer::MaterialId> goal_material = createTinted(renderer, *lit, kGoalTint);
+  if (!goal_material) {
+    return false;
+  }
+  goal_material_ = *goal_material;
+
+  if (!loadScene(0)) {
+    return false;
+  }
+  setMouseCaptured(engine, true);
   return true;
 }
 
@@ -135,9 +100,48 @@ void Week4::onUpdate(Engine &engine, float delta_seconds) {
     input.setPlayerCount(input.playerCount() == 1 ? kPlayerCount : 1);
   }
 
+  if (input.isActionJustPressed("NextScene")) {
+    loadScene((scene_index_ + 1) % kScenePaths.size());
+  } else if (input.isActionJustPressed("PreviousScene")) {
+    loadScene((scene_index_ + kScenePaths.size() - 1) % kScenePaths.size());
+  } else if (input.isActionJustPressed("ReloadScene")) {
+    loadScene(scene_index_);
+  }
+
   for (uint8_t player = 0; player < input.playerCount(); ++player) {
     cameras_[player].update(input, player, delta_seconds, mouse_captured_ && player == 0);
   }
+
+  if (const scene::Marker *goal = scene_.findMarker("Goal")) {
+    for (uint8_t player = 0; player < input.playerCount(); ++player) {
+      if (length(cameras_[player].position - goal->transform.position) <= goal->transform.scale.x) {
+        log::info("Player {} reached the goal of '{}'", player + 1, scene_.name);
+        loadScene((scene_index_ + 1) % kScenePaths.size());
+        break;
+      }
+    }
+  }
+}
+
+bool Week4::loadScene(size_t index) {
+  std::optional<scene::Scene> loaded = scene::loadScene(kScenePaths[index]);
+  if (!loaded) {
+    return false;
+  }
+  scene_ = std::move(*loaded);
+  scene_index_ = index;
+
+  const std::vector<const scene::Marker *> starts = scene_.findMarkers("PlayerStart");
+  if (starts.empty()) {
+    log::warn("Scene '{}' has no PlayerStart, starting at the origin", scene_.name);
+  }
+  for (size_t i = 0; i < cameras_.size(); ++i) {
+    FlyCamera &camera = cameras_[i];
+    const Transform start = starts.empty() ? Transform{} : starts[i % starts.size()]->transform;
+    camera.position = start.position;
+    camera.lookAt(start.position + start.rotation * Vec3(0.0f, 0.0f, -1.0f));
+  }
+  return true;
 }
 
 void Week4::setMouseCaptured(Engine &engine, bool captured) {
@@ -146,6 +150,7 @@ void Week4::setMouseCaptured(Engine &engine, bool captured) {
 }
 
 void Week4::onRender(Engine &engine, renderer::FrameDesc &frame) {
+  renderer::Renderer &renderer = engine.renderer();
   const uint8_t player_count = engine.input().playerCount();
   if (player_count == 1) {
     frame.camera = cameraFor(cameras_[0]);
@@ -154,18 +159,23 @@ void Week4::onRender(Engine &engine, renderer::FrameDesc &frame) {
     frame.views.push_back({.id = {1}, .camera = cameraFor(cameras_[1]), .region = renderer::ScreenRegion::right()});
   }
 
-  frame.draws.push_back({.mesh = cube_, .material = material_});
+  scene_renderer_.draw(renderer, scene_, frame);
+
+  if (const scene::Marker *goal = scene_.findMarker("Goal")) {
+    frame.draws.push_back(
+        {.mesh = renderer.primitive(renderer::Primitive::Sphere),
+         .material = goal_material_,
+         .transform = {.position = goal->transform.position, .scale = Vec3(2.0f * goal->transform.scale.x)}});
+  }
 
   for (uint8_t player = 0; player < player_count; ++player) {
     const FlyCamera &camera = cameras_[player];
     const Quat rotation = camera.rotation();
-    const Quat facing = Quat::fromAxisAngle(Vec3(0.0f, 1.0f, 0.0f), std::numbers::pi_v<float>);
-    frame.draws.push_back(
-        {.mesh = player_mesh_,
-         .material = player_materials_[player],
-         .transform = {
-             .position = camera.position + rotation * Vec3(0.0f, 0.0f, kMarkerBackOffset),
-             .rotation = rotation * facing,
-             .scale = Vec3(kMarkerSize)}});
+    const Quat facing = Quat::fromAxisAngle(Vec3(0.0f, 1.0f, 0.0f), kPi);
+    renderer.renderObj(
+        frame, kPlayerModel, player_materials_[player],
+        {.position = camera.position + rotation * Vec3(0.0f, 0.0f, kMarkerBackOffset),
+         .rotation = rotation * facing,
+         .scale = Vec3(kMarkerSize)});
   }
 }
