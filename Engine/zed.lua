@@ -90,23 +90,32 @@ task("zed")
 
       -- Debugging always uses the debug build.
       local debug_entries = { }
+      -- A process launched under a debugger on Windows gets the OS debug heap,
+      -- which makes every allocation slow. Slang allocates a lot, so startup,
+      -- shader compilation and shutdown crawl. _NO_DEBUG_HEAP turns it off.
       for _, app in ipairs(apps) do
         local dir = path.unix(path.join(config.builddir(), config.plat(), config.arch(), "debug", app:name()))
         local root = "$ZED_WORKTREE_ROOT/"
-        table.insert(debug_entries, table.concat({
+        local lines = {
           "  {",
           '    "label": ' .. quote(app:name()) .. ",",
           '    "adapter": "CodeLLDB",',
           '    "request": "launch",',
           '    "program": ' .. quote(root .. dir .. "/" .. app:filename()) .. ",",
           '    "cwd": ' .. quote(root .. dir) .. ",",
+        }
+        if is_host("windows") then
+          table.insert(lines, '    "env": { "_NO_DEBUG_HEAP": "1" },')
+        end
+        table.join2(lines, {
           '    "build": {',
           '      "command": "xmake",',
           '      "args": ' .. list({ "zed", "--prepare-debug=" .. app:name() }) .. ",",
           '      "cwd": "$ZED_WORKTREE_ROOT"',
           "    }",
           "  }",
-        }, "\n"))
+        })
+        table.insert(debug_entries, table.concat(lines, "\n"))
       end
 
       local function write(file, entries)

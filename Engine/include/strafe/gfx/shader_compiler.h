@@ -12,6 +12,7 @@
 
 namespace slang {
 struct IGlobalSession;
+struct ISession;
 } // namespace slang
 
 namespace strafe::gfx {
@@ -46,7 +47,14 @@ public:
   std::optional<CompiledShader> compile(std::string_view module_name);
 
 private:
+  bool createSession();
+
   slang::IGlobalSession *global_session_ = nullptr;
+  // One session for every compile, so modules a shader imports (the strafe
+  // library) are parsed and checked once instead of once per shader. A
+  // session never reloads a module it already has, so hot reload will need a
+  // fresh one.
+  slang::ISession *session_ = nullptr;
   std::vector<std::string> search_paths_;
 };
 

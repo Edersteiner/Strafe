@@ -308,17 +308,21 @@ bool ShaderCompiler::initialize(std::vector<std::string> search_paths) {
     log::error("Failed to create the Slang global session");
     return false;
   }
-  return true;
+  return createSession();
 }
 
 void ShaderCompiler::shutdown() {
+  if (session_) {
+    session_->release();
+    session_ = nullptr;
+  }
   if (global_session_) {
     global_session_->release();
     global_session_ = nullptr;
   }
 }
 
-std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_name) {
+bool ShaderCompiler::createSession() {
   const slang::TargetDesc target{.format = SLANG_SPIRV, .profile = global_session_->findProfile("spirv_1_6")};
 
   auto int_option = [](slang::CompilerOptionName name, int value) {
@@ -361,17 +365,19 @@ std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_na
       .compilerOptionEntries = const_cast<slang::CompilerOptionEntry *>(options.data()),
       .compilerOptionEntryCount = static_cast<uint32_t>(options.size())};
 
-  Slang::ComPtr<slang::ISession> session;
-  if (SLANG_FAILED(global_session_->createSession(session_desc, session.writeRef()))) {
+  if (SLANG_FAILED(global_session_->createSession(session_desc, &session_))) {
     log::error("Failed to create a Slang session");
-    return std::nullopt;
+    return false;
   }
+  return true;
+}
 
+std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_name) {
   const std::string name(module_name);
   log::info("Compiling shader: {}", name);
 
   Slang::ComPtr<slang::IBlob> diagnostics;
-  slang::IModule *module = session->loadModule(name.c_str(), diagnostics.writeRef());
+  slang::IModule *module = session_->loadModule(name.c_str(), diagnostics.writeRef());
   logDiagnostics(diagnostics, module == nullptr);
   if (!module) {
     return std::nullopt;
@@ -399,7 +405,7 @@ std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_na
   // A shader without its own vertex stage gets the standard one, which
   // outputs the Surface every fragment shader in the library takes.
   if (!has_vertex) {
-    slang::IModule *standard = session->loadModule("strafe/standard_vertex", diagnostics.writeRef());
+    slang::IModule *standard = session_->loadModule("strafe/standard_vertex", diagnostics.writeRef());
     logDiagnostics(diagnostics, standard == nullptr);
     Slang::ComPtr<slang::IEntryPoint> entry_point;
     if (!standard || SLANG_FAILED(standard->findEntryPointByName("standardVertexMain", entry_point.writeRef()))) {
@@ -416,7 +422,7 @@ std::optional<CompiledShader> ShaderCompiler::compile(std::string_view module_na
     raw_components.push_back(component.get());
   }
   Slang::ComPtr<slang::IComponentType> composite;
-  if (SLANG_FAILED(session->createCompositeComponentType(
+  if (SLANG_FAILED(session_->createCompositeComponentType(
           raw_components.data(), static_cast<SlangInt>(raw_components.size()), composite.writeRef(),
           diagnostics.writeRef()))) {
     logDiagnostics(diagnostics, true);

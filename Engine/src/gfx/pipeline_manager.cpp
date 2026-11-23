@@ -117,6 +117,14 @@ void PipelineManager::shutdown() {
 void PipelineManager::registerPass(const std::string &name, PassDesc desc) { passes_[name] = std::move(desc); }
 
 std::optional<ShaderId> PipelineManager::load(std::string_view name) {
+  // Loading the same shader twice returns the first one, so callers that each
+  // load "lit" share a pipeline instead of compiling it again.
+  for (size_t i = 0; i < shaders_.size(); ++i) {
+    if (shaders_[i].reflection.name == name) {
+      return ShaderId{.index = static_cast<uint32_t>(i)};
+    }
+  }
+
   std::optional<CompiledShader> compiled = compiler_.compile(name);
   if (!compiled) {
     return std::nullopt;
