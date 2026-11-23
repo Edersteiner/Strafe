@@ -35,7 +35,7 @@ struct PushConstants {
   VkDeviceAddress frame_data = 0; // This frame's FrameData buffer.
   VkDeviceAddress material = 0;   // The draw's material block, or 0.
   VkDeviceAddress vertex_buffer = 0;
-  uint32_t draw_id = -1; // For debugging, -1 means not set.
+  uint32_t draw_id = UINT32_MAX; // For debugging, UINT32_MAX means not set.
   uint32_t padding = 0;
 };
 
