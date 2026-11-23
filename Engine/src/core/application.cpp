@@ -2,10 +2,13 @@
 
 #include "strafe/core/log.h"
 #include "strafe/gfx/vk_check.h"
+#include "strafe/ui/imgui_impl.h"
 
 #include <optional>
 #include <utility>
 #include <vector>
+
+#include <imgui.h>
 
 namespace strafe {
 
@@ -35,6 +38,8 @@ bool Application::initialize(const AppConfig &config) {
     log::error("Failed to initialize Vulkan");
     return false;
   }
+
+  ui::initializeImgui(*this);
 
   app_initialized_ = true;
   if (!app_.onInit(engine_)) {
@@ -81,7 +86,9 @@ void Application::run() {
         swapchain_.markForRecreate();
         continue;
       }
-      input_.handleEvents(event);
+      if (!ui::processImguiEvent(event)) {
+        input_.handleEvents(event);
+      }
     }
     if (!running_) {
       break;
@@ -123,7 +130,12 @@ void Application::render() {
   frame_desc_.views = std::move(views);
   frame_desc_.time = time();
 
+  ui::beginRenderImgui(input_.isRelativeMouseMode());
+
+  ImGui::ShowDemoWindow();
   app_.onRender(engine_, frame_desc_);
+
+  ui::endRenderImgui();
 
   renderer_.render(*frame, frame_desc_);
   frame_ring_.endFrame(*frame, swapchain_);
@@ -138,6 +150,8 @@ void Application::shutdown() {
   if (app_initialized_) {
     app_.onShutdown(engine_);
   }
+
+  ui::shutdownImgui();
 
   // The renderer defers destruction into the ring, so it shuts down first.
   renderer_.shutdown();

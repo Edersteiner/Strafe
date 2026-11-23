@@ -527,6 +527,13 @@ void Renderer::recordComposite(gfx::CommandList &cmd, const gfx::FrameContext &c
         PushConstants{.material = materials_.address(views_[view.view_index].composite_material, ctx.frame_slot)});
     cmd.draw(3);
   }
+
+  if (overlay_) {
+    overlay_(cmd);
+    // The overlay should bind its own pipeline layout and sets
+    bindless_bound_ = false;
+  }
+
   cmd.endRendering();
 }
 

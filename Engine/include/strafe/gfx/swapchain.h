@@ -25,6 +25,7 @@ public:
   VkSwapchainKHR handle() const { return swapchain_handle_; }
   VkImage image(uint32_t index) const { return swapchain_images_[index]; }
   VkImageView imageView(uint32_t index) const { return swapchain_image_views_[index]; }
+  uint32_t imageCount() const { return swapchain_images_.size(); }
   VkSemaphore presentSemaphore(uint32_t index) const { return render_complete_semaphores_[index]; }
   VkExtent2D extent() const { return VkExtent2D{.width = swapchain_width_, .height = swapchain_height_}; }
   VkFormat format() const { return swapchain_format_; }
@@ -47,7 +48,7 @@ private:
   uint32_t swapchain_width_ = 0;
   uint32_t swapchain_height_ = 0;
 
-  VkFormat swapchain_format_ = VK_FORMAT_B8G8R8A8_SRGB;
+  VkFormat swapchain_format_ = VK_FORMAT_B8G8R8A8_UNORM;
 
   bool require_recreate_ = false;
 };

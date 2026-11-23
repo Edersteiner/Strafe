@@ -129,6 +129,8 @@ void InputManager::setRelativeMouseMode(bool enabled) {
   }
 }
 
+bool InputManager::isRelativeMouseMode() const { return window_ && SDL_GetWindowRelativeMouseMode(window_); }
+
 void InputManager::beginFrame() { mouse_delta_ = {}; }
 
 void InputManager::handleEvents(const SDL_Event &event) {

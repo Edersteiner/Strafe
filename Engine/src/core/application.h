@@ -28,6 +28,10 @@ public:
   void run();
   void shutdown();
 
+  SDL_Window &window() { return *window_; }
+  gfx::Device &device() { return device_; }
+  gfx::Swapchain &swapchain() { return swapchain_; }
+
   // Behind Engine.
   renderer::Renderer &renderer() { return renderer_; }
   input::InputManager &input() { return input_; }

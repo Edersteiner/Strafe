@@ -21,12 +21,14 @@ public:
   bool initialize(SDL_Window *window, VkFormat requested_swapchain_format);
   void shutdown();
 
+  VkInstance instance() const { return instance_; }
   VkDevice logicalDevice() const { return logical_device_; }
   VkPhysicalDevice physicalDevice() const { return physical_device_; }
   VkSurfaceKHR surface() const { return surface_; }
   VmaAllocator allocator() const { return vma_allocator_; }
   VkQueue graphicsQueue() const { return graphics_queue_; }
   uint32_t graphicsQueueFamily() const { return graphics_queue_family_idx_; }
+  uint32_t apiVersion() const { return kVulkanVersion; }
 
 private:
   static constexpr uint32_t kVulkanVersion = VK_API_VERSION_1_4;

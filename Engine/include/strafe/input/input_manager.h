@@ -85,6 +85,7 @@ public:
   Vec2 mouseDelta(uint8_t player_id = kAnyPlayer) const;
   // Hides the cursor and keeps reporting motion past the window's edges.
   void setRelativeMouseMode(bool enabled);
+  bool isRelativeMouseMode() const;
 
 private:
   friend class strafe::Application;
