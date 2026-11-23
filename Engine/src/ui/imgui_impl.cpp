@@ -5,6 +5,7 @@
 
 #include "strafe/gfx/command_list.h"
 #include "strafe/gfx/vk_check.h"
+#include "strafe/ui/theme.h"
 
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
@@ -24,6 +25,12 @@ void initializeImgui(Application &app) {
   ImGuiIO &io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+  float dpi_scale = SDL_GetWindowDisplayScale(&app.window());
+  if (dpi_scale <= 0.0f) {
+    dpi_scale = 1.0f;
+  }
+  applyTheme(dpi_scale);
 
   const VkFormat color_format = app.swapchain().format();
 
