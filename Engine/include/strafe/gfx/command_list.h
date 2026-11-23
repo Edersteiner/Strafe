@@ -102,6 +102,8 @@ public:
       uint32_t first_instance = 0);
   void draw(uint32_t vertex_count, uint32_t instance_count = 1, uint32_t first_vertex = 0, uint32_t first_instance = 0);
 
+  VkCommandBuffer handle() const { return buffer_; }
+
   // The most transitions one call takes.
   static constexpr uint32_t kMaxTransitions = 16;
 

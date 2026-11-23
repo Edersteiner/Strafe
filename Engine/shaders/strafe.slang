@@ -4,6 +4,7 @@
 // from strafe/standard_vertex.slang.
 __exported import strafe.attributes;
 __exported import strafe.bindless;
+__exported import strafe.color;
 __exported import strafe.draw;
 __exported import strafe.frame;
 __exported import strafe.lighting;

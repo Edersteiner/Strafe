@@ -22,5 +22,7 @@ FullscreenVertex vsMain(uint vertex_id : SV_VulkanVertexID) {
 [shader("fragment"), Material("CompositeParams"), Pass("composite"), Cull("none"), Depth("off")]
 float4 fsMain(FullscreenVertex vertex) : SV_Target {
 	let m = material<CompositeParams>();
-	return m.source.sample(m.sampler, vertex.uv);
+	let color = m.source.sample(m.sampler, vertex.uv);
+	// The swapchain is UNORM, so the sRGB encode happens here.
+	return float4(linearToSrgb(saturate(color.rgb)), color.a);
 }

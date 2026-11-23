@@ -16,7 +16,10 @@ add_requires("libsdl3 3.4.16")
 add_requires("glm 1.0.3")
 add_requires("stb 2026.03.18")
 add_requires("slang v2026.16")
-add_requires("tinyobjloader");
+add_requires("tinyobjloader")
+add_requires("imgui 1.92.9+b-docking", { configs = { sdl3 = true, volk = true } })
+add_requireconfs("imgui.libsdl3", { override = true, version = "3.4.16" })
+add_requireconfs("imgui.volk", { override = true, version = vulkan_sdk })
 
 -- The engine library, then every app built on it.
 includes("Engine")

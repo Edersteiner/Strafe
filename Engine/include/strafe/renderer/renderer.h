@@ -82,6 +82,9 @@ public:
   void setDebugView(DebugView view) { debug_view_ = view; }
   DebugView debugView() const { return debug_view_; }
 
+  using OverlayFn = std::function<void(gfx::CommandList &cmd)>;
+  void setOverlay(OverlayFn overlay) { overlay_ = std::move(overlay); }
+
 private:
   static constexpr uint32_t kMaxViews = 4;
   // A view missing from FrameDesc keeps its target this many frames, so
@@ -160,6 +163,8 @@ private:
   gfx::ShaderId wireframe_shader_;
   gfx::ShaderId normals_shader_;
   gfx::ShaderId drawid_shader_;
+
+  OverlayFn overlay_;
 };
 
 } // namespace strafe::renderer

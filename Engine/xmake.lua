@@ -8,7 +8,7 @@ target("Strafe")
     add_includedirs("src")
 
     -- Public because engine headers include them, so apps need them too.
-    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "libsdl3", { public = true })
+    add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "libsdl3", "imgui", { public = true })
     -- Only used inside the engine's own source files.
     add_packages("glm", "slang", "stb", "tinyobjloader")
 
