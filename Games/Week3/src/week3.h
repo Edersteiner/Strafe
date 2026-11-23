@@ -7,7 +7,6 @@
 class Week3 : public strafe::App {
 public:
   bool onInit(strafe::Engine &engine) override;
-  void onEvent(strafe::Engine &engine, const SDL_Event &event) override;
   void onUpdate(strafe::Engine &engine, float delta_seconds) override;
   void onRender(strafe::Engine &engine, strafe::renderer::FrameDesc &frame) override;
 

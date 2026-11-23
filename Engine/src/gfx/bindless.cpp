@@ -175,6 +175,10 @@ std::optional<uint32_t> BindlessSet::addSampledImage(VkImageView view) {
 }
 
 void BindlessSet::freeSampledImage(uint32_t slot) {
+  // Deferred frees flush in FrameRing::shutdown, after the set is gone.
+  if (!device_) {
+    return;
+  }
   assert(slot < next_sampled_slot_);
   // The descriptor keeps pointing at the old view. That's fine because the
   // binding is partially bound and nothing indexes a freed slot.

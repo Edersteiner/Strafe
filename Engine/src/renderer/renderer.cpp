@@ -2,17 +2,20 @@
 
 #include "strafe/core/log.h"
 #include "strafe/core/utils.h"
+#include "strafe/gfx/bindless.h"
 #include "strafe/gfx/buffer.h"
 #include "strafe/gfx/command_list.h"
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
+#include "strafe/gfx/pipeline_manager.h"
 #include "strafe/gfx/swapchain.h"
 #include "strafe/renderer/obj_loader.h"
+#include "strafe/renderer/view_target.h"
 
-#include "vulkan/vulkan_core.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -32,7 +35,7 @@ struct PushConstants {
   VkDeviceAddress frame_data = 0; // This frame's FrameData buffer.
   VkDeviceAddress material = 0;   // The draw's material block, or 0.
   VkDeviceAddress vertex_buffer = 0;
-  uint32_t draw_id = -1; // For debugging, -1 means not set.
+  uint32_t draw_id = UINT32_MAX; // For debugging, UINT32_MAX means not set.
   uint32_t padding = 0;
 };
 
@@ -59,6 +62,30 @@ static_assert(offsetof(FrameData, light_direction) == 80);
 static_assert(offsetof(FrameData, light_color) == 92);
 static_assert(offsetof(FrameData, ambient) == 104);
 
+// Each view's FrameData block starts 16 byte aligned.
+constexpr VkDeviceSize kFrameDataStride = (sizeof(FrameData) + 15) / 16 * 16;
+
+VkRect2D pixelRect(const ScreenRegion &region, VkExtent2D extent) {
+  const auto edge = [](float t, uint32_t size) {
+    return static_cast<int32_t>(std::lround(std::clamp(t, 0.0f, 1.0f) * static_cast<float>(size)));
+  };
+  const int32_t x0 = edge(region.x, extent.width);
+  const int32_t y0 = edge(region.y, extent.height);
+  const int32_t x1 = edge(region.x + region.width, extent.width);
+  const int32_t y1 = edge(region.y + region.height, extent.height);
+  return {
+      .offset = {.x = x0, .y = y0},
+      .extent = {
+          .width = static_cast<uint32_t>(std::max(x1 - x0, 0)), .height = static_cast<uint32_t>(std::max(y1 - y0, 0))}};
+}
+
+VkExtent2D scaledExtent(VkExtent2D extent, float scale) {
+  const auto scaled = [scale](uint32_t size) {
+    return static_cast<uint32_t>(std::max(std::lround(static_cast<float>(size) * scale), 1L));
+  };
+  return {.width = scaled(extent.width), .height = scaled(extent.height)};
+}
+
 } // namespace
 
 bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain, gfx::FrameRing &frame_ring) {
@@ -79,19 +106,7 @@ bool Renderer::initialize(gfx::Device &device, gfx::Swapchain &swapchain, gfx::F
     return false;
   }
 
-  const TextureData white{
-      .width = 1, .height = 1, .rgba = {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}, std::byte{0xff}}};
-  if (const std::optional<TextureId> id = createTexture(white, ColorSpace::Srgb)) {
-    default_texture_ = *id;
-  } else {
-    log::error("Failed to create the default texture");
-    return false;
-  }
-
-  // No swapchain means the window starts minimized. resize() creates the
-  // depth buffer once the swapchain exists.
-  if (swapchain_->handle() && !createDepthBuffer(swapchain_->extent())) {
-    log::error("Failed to create depth buffer");
+  if (!textures_.initialize(device, frame_ring, uploader_, bindless_)) {
     return false;
   }
   if (!createPipelines()) {
@@ -114,14 +129,14 @@ void Renderer::shutdown() {
   }
   meshes_.clear();
   obj_meshes_.clear();
+  primitive_meshes_ = {};
 
-  // The whole bindless set goes away below, so the slots aren't freed one by
-  // one.
-  for (const Texture &texture : textures_) {
-    frame_ring_->deferDestroy([gfx_device = device_, image = texture.image] { gfx::destroyImage(*gfx_device, image); });
+  for (View &view : views_) {
+    destroyView(view);
   }
-  textures_.clear();
-  default_texture_ = {};
+  views_.clear();
+  free_composite_materials_.clear();
+  textures_.shutdown();
 
   for (gfx::Buffer &buffer : frame_buffers_) {
     if (buffer.handle) {
@@ -130,44 +145,72 @@ void Renderer::shutdown() {
     buffer = {};
   }
 
-  destroyDepthBuffer();
   // Both safe to destroy now, because the GPU is idle.
   bindless_.shutdown();
   uploader_.shutdown();
 }
 
-bool Renderer::resize(VkExtent2D extent) {
-  destroyDepthBuffer();
-  if (extent.width == 0 || extent.height == 0) {
-    return true;
+std::optional<uint32_t> Renderer::prepareView(ViewId id, VkExtent2D target_extent) {
+  const auto it = std::ranges::find(views_, id, &View::id);
+  uint32_t index = 0;
+  if (it == views_.end()) {
+    const std::optional<ViewTarget> target = createViewTarget(*device_, textures_, target_extent);
+    if (!target) {
+      return std::nullopt;
+    }
+    MaterialId material;
+    if (!free_composite_materials_.empty()) {
+      material = free_composite_materials_.back();
+      free_composite_materials_.pop_back();
+    } else {
+      material = materials_.create(composite_shader_);
+      materials_.set(material, "sampler", gfx::Sampler::LinearClamp);
+    }
+    views_.push_back({.id = id, .target = *target, .composite_material = material});
+    index = static_cast<uint32_t>(views_.size() - 1);
+  } else {
+    index = static_cast<uint32_t>(it - views_.begin());
+    View &view = views_[index];
+    const bool same_size =
+        view.target.extent.width == target_extent.width && view.target.extent.height == target_extent.height;
+    if (same_size) {
+      view.last_used_frame = frame_count_;
+      return index;
+    }
+    if (!resizeViewTarget(*device_, *frame_ring_, textures_, view.target, target_extent)) {
+      return std::nullopt;
+    }
   }
-  return createDepthBuffer(extent);
+
+  View &view = views_[index];
+  view.last_used_frame = frame_count_;
+  // The material holds the bindless slot, which changes with every new image.
+  materials_.set(view.composite_material, "source", view.target.color);
+  return index;
 }
 
-bool Renderer::createDepthBuffer(VkExtent2D extent) {
-  const std::optional<gfx::Image> depth = gfx::createImage(
-      *device_,
-      {.extent = extent,
-       .format = kDepthFormat,
-       .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-       .dedicated = true});
-  if (!depth) {
-    return false;
+void Renderer::evictUnusedViews() {
+  for (View &view : views_) {
+    if (frame_count_ - view.last_used_frame > kViewKeepFrames) {
+      destroyView(view);
+    }
   }
-  depth_image_ = *depth;
-  return true;
+  std::erase_if(views_, [](const View &view) { return !view.composite_material.valid(); });
 }
 
-void Renderer::destroyDepthBuffer() {
-  gfx::destroyImage(*device_, depth_image_);
-  depth_image_ = {};
+void Renderer::destroyView(View &view) {
+  destroyViewTarget(*device_, *frame_ring_, textures_, view.target);
+  if (view.composite_material.valid()) {
+    free_composite_materials_.push_back(view.composite_material);
+  }
+  view.composite_material = {};
 }
 
 bool Renderer::createFrameBuffers() {
   // One per frame in flight, so the CPU writes one while
   // the GPU may still be reading the other.
   for (gfx::Buffer &buffer : frame_buffers_) {
-    const std::optional<gfx::Buffer> created = gfx::createBuffer(*device_, sizeof(FrameData), 0);
+    const std::optional<gfx::Buffer> created = gfx::createBuffer(*device_, kMaxViews * kFrameDataStride, 0);
     if (!created) {
       return false;
     }
@@ -186,8 +229,9 @@ bool Renderer::createPipelines() {
     return false;
   }
 
-  pipelines_.registerPass("forward", {.color_formats = {swapchain_->format()}, .depth_format = kDepthFormat});
-  materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textureSlot(id); });
+  pipelines_.registerPass("forward", {.color_formats = {kViewColorFormat}, .depth_format = kViewDepthFormat});
+  pipelines_.registerPass("composite", {.color_formats = {swapchain_->format()}});
+  materials_.initialize(*device_, *frame_ring_, pipelines_, [this](TextureId id) { return textures_.slot(id); });
 
 // Load debug view shaders in debug mode
 #ifdef STRAFE_DEBUG
@@ -195,6 +239,14 @@ bool Renderer::createPipelines() {
   normals_shader_ = *pipelines_.load("debug/normals");
   drawid_shader_ = *pipelines_.load("debug/drawid");
 #endif
+
+  const std::optional<gfx::ShaderId> composite = pipelines_.load("composite");
+  if (!composite) {
+    log::error("Failed to load the composite shader");
+    return false;
+  }
+
+  composite_shader_ = *composite;
 
   return true;
 }
@@ -211,13 +263,6 @@ std::optional<MaterialId> Renderer::createMaterial(gfx::ShaderId shader) {
 
 bool Renderer::setParam(MaterialId material, std::string_view name, const MaterialParam &value) {
   return materials_.set(material, name, value);
-}
-
-uint32_t Renderer::textureSlot(TextureId id) const {
-  // An invalid or stale id falls back to white instead of sampling an empty
-  // slot, which would be undefined behaviour on the GPU.
-  const TextureId resolved = id.index < textures_.size() ? id : default_texture_;
-  return textures_[resolved.index].bindless_slot;
 }
 
 std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices, std::span<const uint32_t> indices) {
@@ -265,6 +310,15 @@ std::optional<MeshId> Renderer::createMesh(std::span<const Vertex> vertices, std
   return MeshId{.index = static_cast<uint32_t>(meshes_.size() - 1)};
 }
 
+MeshId Renderer::primitive(Primitive primitive) {
+  std::optional<MeshId> &mesh = primitive_meshes_.at(static_cast<size_t>(primitive));
+  if (!mesh) {
+    const MeshData data = primitiveMeshData(primitive);
+    mesh = createMesh(data.vertices, data.indices).value_or(MeshId{});
+  }
+  return *mesh;
+}
+
 bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId material, const Transform &transform) {
   auto it = obj_meshes_.find(path);
   if (it == obj_meshes_.end()) {
@@ -283,31 +337,7 @@ bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId m
 }
 
 std::optional<TextureId> Renderer::createTexture(const TextureData &data, ColorSpace color_space) {
-  const std::optional<gfx::Image> image = gfx::createImage(
-      *device_,
-      {.extent = {.width = data.width, .height = data.height},
-       .format = color_space == ColorSpace::Srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM,
-       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT});
-  if (!image) {
-    log::error("Failed to create a {}x{} texture", data.width, data.height);
-    return std::nullopt;
-  }
-
-  // Validates the byte count against the extent and format.
-  if (!uploader_.uploadImage(*image, data.rgba)) {
-    // Nothing on the GPU uses it, and the uploader has finished with it.
-    gfx::destroyImage(*device_, *image);
-    return std::nullopt;
-  }
-
-  const std::optional<uint32_t> slot = bindless_.addSampledImage(image->view);
-  if (!slot) {
-    gfx::destroyImage(*device_, *image);
-    return std::nullopt;
-  }
-
-  textures_.push_back({.image = *image, .bindless_slot = *slot});
-  return TextureId{.index = static_cast<uint32_t>(textures_.size() - 1)};
+  return textures_.create(data, color_space);
 }
 
 void Renderer::deferDestroyMesh(const Mesh &mesh) {
@@ -318,20 +348,104 @@ void Renderer::deferDestroyMesh(const Mesh &mesh) {
 }
 
 void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
-  const VkExtent2D extent = swapchain_->extent();
   gfx::CommandList cmd(ctx.cmd);
+  bindless_bound_ = false;
+  ++frame_count_;
+  // First, so indices into views_ stay valid for the rest of the frame.
+  evictUnusedViews();
 
+  // A game that pushes no views gets one view of desc.camera over the window.
+  const ViewDesc default_view{.id = kDefaultViewId, .camera = desc.camera};
+  const std::span<const ViewDesc> view_descs =
+      desc.views.empty() ? std::span<const ViewDesc>(&default_view, 1) : std::span<const ViewDesc>(desc.views);
+  assert(view_descs.size() <= kMaxViews && "Too many views in FrameDesc");
   const gfx::Buffer &frame_buffer = frame_buffers_[ctx.frame_slot];
-  const FrameData frame_data{
-      .view_projection = toGlm(desc.view_projection),
-      .camera_position = toGlm(desc.camera_position),
-      .time = desc.time,
-      .light_direction = toGlm(desc.light.direction),
-      .light_color = toGlm(desc.light.color),
-      .ambient = toGlm(desc.light.ambient)};
-  gfx::writeBuffer(*device_, frame_buffer, std::as_bytes(std::span(&frame_data, 1)));
-  materials_.upload(ctx.frame_slot);
+  const VkExtent2D screen = swapchain_->extent();
+  std::array<FrameView, kMaxViews> frame_views{};
+  uint32_t view_count = 0;
+  for (const ViewDesc &view_desc : view_descs) {
+    if (view_count == kMaxViews) {
+      break;
+    }
+    const std::span<const FrameView> earlier(frame_views.data(), view_count);
+    const bool duplicate =
+        std::ranges::any_of(earlier, [&](const FrameView &other) { return other.desc->id == view_desc.id; });
+    assert(!duplicate && "Two views in one frame share an id");
+    const VkRect2D rect = pixelRect(view_desc.region, screen);
+    if (duplicate || rect.extent.width == 0 || rect.extent.height == 0) {
+      continue;
+    }
+    const std::optional<uint32_t> index =
+        prepareView(view_desc.id, scaledExtent(rect.extent, view_desc.resolution_scale));
+    if (!index) {
+      continue;
+    }
 
+    // The aspect comes from the target, so a half screen view gets its own.
+    const VkExtent2D extent = views_[*index].target.extent;
+    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+    const Mat4 view_projection = projectionMatrix(view_desc.camera.projection, aspect) * viewMatrix(view_desc.camera);
+    const FrameData frame_data{
+        .view_projection = toGlm(view_projection),
+        .camera_position = toGlm(view_desc.camera.transform.position),
+        .time = desc.time,
+        .light_direction = toGlm(desc.light.direction),
+        .light_color = toGlm(desc.light.color),
+        .ambient = toGlm(desc.light.ambient)};
+    const VkDeviceSize offset = view_count * kFrameDataStride;
+    gfx::writeBuffer(*device_, frame_buffer, std::as_bytes(std::span(&frame_data, 1)), offset);
+
+    frame_views[view_count++] = {
+        .desc = &view_desc, .view_index = *index, .rect = rect, .frame_data = frame_buffer.address + offset};
+  }
+  const std::span<const FrameView> views(frame_views.data(), view_count);
+
+  materials_.upload(ctx.frame_slot);
+  sortDraws(desc);
+
+  static_assert(2 * kMaxViews <= gfx::CommandList::kMaxTransitions);
+  std::array<gfx::ImageTransition, 2 * kMaxViews> scene_transitions{};
+  for (uint32_t i = 0; i < view_count; ++i) {
+    const ViewTarget &target = views_[views[i].view_index].target;
+    scene_transitions[2 * i] = {
+        .image = textures_.image(target.color).handle,
+        .from = gfx::ResourceState::ShaderRead,
+        .to = gfx::ResourceState::ColorTarget,
+        .discard = true};
+    scene_transitions[2 * i + 1] = {
+        .image = target.depth.handle,
+        .from = gfx::ResourceState::DepthTarget,
+        .to = gfx::ResourceState::DepthTarget,
+        .discard = true,
+        .aspect = target.depth.aspect};
+  }
+  cmd.transition(std::span(scene_transitions.data(), 2 * view_count));
+  for (const FrameView &view : views) {
+    recordScene(cmd, ctx, desc, view);
+  }
+
+  const VkImage swapchain_image = swapchain_->image(ctx.image_index);
+  static_assert(kMaxViews + 1 <= gfx::CommandList::kMaxTransitions);
+  std::array<gfx::ImageTransition, kMaxViews + 1> composite_transitions{};
+  for (uint32_t i = 0; i < view_count; ++i) {
+    composite_transitions[i] = {
+        .image = textures_.image(views_[views[i].view_index].target.color).handle,
+        .from = gfx::ResourceState::ColorTarget,
+        .to = gfx::ResourceState::ShaderRead};
+  }
+  composite_transitions[view_count] = {
+      .image = swapchain_image,
+      .from = gfx::ResourceState::Present,
+      .to = gfx::ResourceState::ColorTarget,
+      .discard = true};
+  cmd.transition(std::span(composite_transitions.data(), view_count + 1));
+  recordComposite(cmd, ctx, views);
+
+  cmd.transition(
+      {.image = swapchain_image, .from = gfx::ResourceState::ColorTarget, .to = gfx::ResourceState::Present});
+}
+
+void Renderer::sortDraws(const FrameDesc &desc) {
   // Opaque draws first, then blended ones over them.
   draw_order_.clear();
   for (uint32_t i = 0; i < desc.draws.size(); ++i) {
@@ -347,78 +461,83 @@ void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
     const bool blended = pipelines_.reflection(shader).blend != gfx::BlendMode::Opaque;
     return std::pair(blended, shader.index);
   };
-  std::stable_sort(
-      draw_order_.begin(), draw_order_.end(), [&](uint32_t a, uint32_t b) { return sort_key(a) < sort_key(b); });
+  std::ranges::stable_sort(draw_order_, [&](uint32_t a, uint32_t b) { return sort_key(a) < sort_key(b); });
+}
 
-  // Both targets are cleared, so their old contents are discarded. The depth
-  // image is shared by every frame in flight, so it still waits for the
-  // previous frame's depth writes.
-  const std::array<gfx::ImageTransition, 2> begin_transitions{{
-      {.image = swapchain_->image(ctx.image_index),
-       .from = gfx::ResourceState::Present,
-       .to = gfx::ResourceState::ColorTarget,
-       .discard = true},
-      {.image = depth_image_.handle,
-       .from = gfx::ResourceState::DepthTarget,
-       .to = gfx::ResourceState::DepthTarget,
-       .discard = true,
-       .aspect = depth_image_.aspect},
-  }};
-  cmd.transition(begin_transitions);
-
+void Renderer::recordScene(
+    gfx::CommandList &cmd, const gfx::FrameContext &ctx, const FrameDesc &desc, const FrameView &view) {
+  const ViewTarget &target = views_[view.view_index].target;
   const gfx::ColorAttachment color_attachment{
-      .view = swapchain_->imageView(ctx.image_index), .clear_color = {0.01f, 0.01f, 0.01f, 1.0f}};
-
+      .view = textures_.image(target.color).view, .clear_color = view.desc->clear_color};
   cmd.beginRendering(
-      {.extent = extent, .colors = {&color_attachment, 1}, .depth = gfx::DepthAttachment{.view = depth_image_.view}});
-  {
-    cmd.setViewport(extent);
-    cmd.setScissor(extent);
+      {.extent = target.extent,
+       .colors = {&color_attachment, 1},
+       .depth = gfx::DepthAttachment{.view = target.depth.view}});
+  cmd.setViewport(target.extent);
+  cmd.setScissor(target.extent);
 
-    gfx::ShaderId bound_shader;
-    for (const uint32_t draw_index : draw_order_) {
-      const DrawItem &draw = desc.draws[draw_index];
-      const gfx::ShaderId shader = materials_.shader(draw.material);
-      if (shader.index != bound_shader.index) {
+  gfx::ShaderId bound_shader;
+  for (const uint32_t draw_index : draw_order_) {
+    const DrawItem &draw = desc.draws[draw_index];
+    const gfx::ShaderId shader = materials_.shader(draw.material);
+    if (shader.index != bound_shader.index) {
 #ifdef STRAFE_DEBUG
-        if (debug_view_ == DebugView::Wireframe) {
-          pipelines_.bind(cmd, wireframe_shader_);
-        } else if (debug_view_ == DebugView::Normals) {
-          pipelines_.bind(cmd, normals_shader_);
-        } else if (debug_view_ == DebugView::DrawId) {
-          pipelines_.bind(cmd, drawid_shader_);
-        } else {
-          pipelines_.bind(cmd, shader);
-        }
-#else
-        pipelines_.bind(cmd, shader);
-#endif
-        // Every pipeline shares the layout, so the set stays bound across
-        // later pipeline changes.
-        if (!bound_shader.valid()) {
-          cmd.bindBindlessSet(bindless_.set());
-        }
-        bound_shader = shader;
+      if (debug_view_ == DebugView::Wireframe) {
+        bindShader(cmd, wireframe_shader_);
+      } else if (debug_view_ == DebugView::Normals) {
+        bindShader(cmd, normals_shader_);
+      } else if (debug_view_ == DebugView::DrawId) {
+        bindShader(cmd, drawid_shader_);
+      } else {
+        bindShader(cmd, shader);
       }
-
-      const Mesh &mesh = meshes_[draw.mesh.index];
-      cmd.bindIndexBuffer(mesh.index_buffer);
-      cmd.pushConstants(
-          PushConstants{
-              .transform = toGlm(draw.transform.toMatrix()),
-              .frame_data = frame_buffer.address,
-              .material = materials_.address(draw.material, ctx.frame_slot),
-              .vertex_buffer = mesh.vertex_buffer.address,
-              .draw_id = draw_index});
-      cmd.drawIndexed(mesh.index_count);
+#else
+      bindShader(cmd, shader);
+#endif
+      bound_shader = shader;
     }
+
+    const Mesh &mesh = meshes_[draw.mesh.index];
+    cmd.bindIndexBuffer(mesh.index_buffer);
+    cmd.pushConstants(
+        PushConstants{
+            .transform = toGlm(draw.transform.toMatrix()),
+            .frame_data = view.frame_data,
+            .material = materials_.address(draw.material, ctx.frame_slot),
+            .vertex_buffer = mesh.vertex_buffer.address,
+            .draw_id = draw_index});
+    cmd.drawIndexed(mesh.index_count);
   }
   cmd.endRendering();
+}
 
-  cmd.transition(
-      {.image = swapchain_->image(ctx.image_index),
-       .from = gfx::ResourceState::ColorTarget,
-       .to = gfx::ResourceState::Present});
+void Renderer::recordComposite(gfx::CommandList &cmd, const gfx::FrameContext &ctx, std::span<const FrameView> views) {
+  // Black shows wherever no view covers the screen.
+  const gfx::ColorAttachment color_attachment{
+      .view = swapchain_->imageView(ctx.image_index), .clear_color = {0.0f, 0.0f, 0.0f, 1.0f}};
+  cmd.beginRendering({.extent = swapchain_->extent(), .colors = {&color_attachment, 1}});
+  if (!views.empty()) {
+    bindShader(cmd, composite_shader_);
+  }
+
+  for (const FrameView &view : views) {
+    cmd.setViewport(view.rect);
+    cmd.setScissor(view.rect);
+    cmd.pushConstants(
+        PushConstants{.material = materials_.address(views_[view.view_index].composite_material, ctx.frame_slot)});
+    cmd.draw(3);
+  }
+  cmd.endRendering();
+}
+
+void Renderer::bindShader(gfx::CommandList &cmd, gfx::ShaderId shader) {
+  pipelines_.bind(cmd, shader);
+  // Every pipeline shares the layout, so the set stays bound across later
+  // pipeline changes and passes.
+  if (!bindless_bound_) {
+    cmd.bindBindlessSet(bindless_.set());
+    bindless_bound_ = true;
+  }
 }
 
 } // namespace strafe::renderer

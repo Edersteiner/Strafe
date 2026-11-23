@@ -9,6 +9,28 @@
 
 namespace strafe::gfx {
 
+namespace {
+
+// Mip generation blits the image into itself with linear filtering.
+bool canGenerateMips(const Image &image, VkPhysicalDevice physical_device) {
+  if (!(image.usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
+    log::error("Generating mips needs an image with TRANSFER_SRC usage");
+    return false;
+  }
+  VkFormatProperties properties{};
+  vkGetPhysicalDeviceFormatProperties(physical_device, image.format, &properties);
+  constexpr VkFormatFeatureFlags kNeeded = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT |
+      VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+  if ((properties.optimalTilingFeatures & kNeeded) != kNeeded) {
+    log::error(
+        "Format {} can't be blitted with linear filtering, so mips can't be generated", static_cast<int>(image.format));
+    return false;
+  }
+  return true;
+}
+
+} // namespace
+
 bool Uploader::initialize(Device &device) {
   device_ = &device;
   const VkDevice vk_device = device_->logicalDevice();
@@ -89,6 +111,10 @@ bool Uploader::uploadImage(const Image &dst, std::span<const std::byte> texels, 
     return false;
   }
 
+  if (dst.mip_levels > 1 && !canGenerateMips(dst, device_->physicalDevice())) {
+    return false;
+  }
+
   std::optional<Buffer> staging = createStaging(texels);
   if (!staging) {
     return false;
@@ -101,9 +127,39 @@ bool Uploader::uploadImage(const Image &dst, std::span<const std::byte> texels, 
          .to = ResourceState::TransferDst,
          .aspect = dst.aspect});
     cmd.copyBufferToImage(*staging, dst);
-    // Also makes the copy visible to everything that later reads the image
-    // in final_state, in this or any later submission.
-    cmd.transition({.image = dst.handle, .from = ResourceState::TransferDst, .to = final_state, .aspect = dst.aspect});
+
+    // Each mip is finished once written, so it turns into the source for the next.
+    for (uint32_t mip = 1; mip < dst.mip_levels; ++mip) {
+      cmd.transition(
+          {.image = dst.handle,
+           .from = ResourceState::TransferDst,
+           .to = ResourceState::TransferSrc,
+           .aspect = dst.aspect,
+           .base_mip = mip - 1,
+           .mip_count = 1});
+      cmd.blitMip(dst, mip);
+    }
+
+    // Every mip but the last was a blit source. These barriers also make the
+    // writes visible to everything that later reads the image in final_state,
+    // in this or any later submission.
+    const uint32_t last_mip = dst.mip_levels - 1;
+    if (last_mip > 0) {
+      cmd.transition(
+          {.image = dst.handle,
+           .from = ResourceState::TransferSrc,
+           .to = final_state,
+           .aspect = dst.aspect,
+           .base_mip = 0,
+           .mip_count = last_mip});
+    }
+    cmd.transition(
+        {.image = dst.handle,
+         .from = ResourceState::TransferDst,
+         .to = final_state,
+         .aspect = dst.aspect,
+         .base_mip = last_mip,
+         .mip_count = 1});
   });
   destroyBuffer(*device_, *staging);
   return ok;

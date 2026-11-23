@@ -4,6 +4,9 @@
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/vk_check.h"
 
+#include <algorithm>
+#include <bit>
+
 namespace strafe::gfx {
 
 VkImageAspectFlags aspectFromFormat(VkFormat format) {
@@ -41,6 +44,11 @@ uint32_t texelSize(VkFormat format) {
   default:
     return 0;
   }
+}
+
+uint32_t fullMipCount(VkExtent2D extent) {
+  // floor(log2(n)) + 1 is the number of bits n needs.
+  return static_cast<uint32_t>(std::bit_width(std::max(extent.width, extent.height)));
 }
 
 std::optional<Image> createImage(Device &device, const ImageDesc &desc) {

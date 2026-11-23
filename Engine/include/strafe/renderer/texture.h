@@ -14,15 +14,15 @@ struct TextureData {
 };
 
 // How the GPU interprets the stored values when sampling.
-enum class ColorSpace {
+enum class ColorSpace : uint8_t {
   // Colors authored by eye: albedo, UI. Sampling converts to linear.
   Srgb,
   // Data: normal maps, roughness, masks. Sampled as is.
   Linear,
 };
 
-// Refers to a texture created by Renderer::createTexture. The default is
-// invalid, like MeshId.
+// Refers to a texture in the TextureTable.
+// Default is invalid.
 struct TextureId {
   uint32_t index = UINT32_MAX;
 

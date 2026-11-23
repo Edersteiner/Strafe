@@ -1,7 +1,5 @@
 #pragma once
 
-#include <SDL3/SDL_events.h>
-
 #include <string>
 
 namespace strafe {
@@ -27,10 +25,6 @@ public:
   // Load meshes, textures, shaders and materials. Returning false quits
   // before the first frame.
   virtual bool onInit(Engine &engine) = 0;
-
-  // Every SDL event except quit and resize, which the engine handles.
-  // Todo: switch to own input system, not raw SDL Events.
-  virtual void onEvent(Engine &engine, const SDL_Event &event) {}
 
   // Delta seconds since the previous frame.
   virtual void onUpdate(Engine &engine, float delta_seconds) {}

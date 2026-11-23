@@ -27,6 +27,14 @@ Quat normalize(Quat q) { return fromGlm(glm::normalize(toGlm(q))); }
 Quat inverse(Quat q) { return fromGlm(glm::inverse(toGlm(q))); }
 Quat slerp(Quat a, Quat b, float t) { return fromGlm(glm::slerp(toGlm(a), toGlm(b), t)); }
 
+Quat lookRotation(Vec3 forward, Vec3 up) {
+  if (dot(forward, forward) == 0.0f) {
+    return {};
+  }
+  // quatLookAtRH expects a unit direction.
+  return fromGlm(glm::quatLookAtRH(glm::normalize(toGlm(forward)), toGlm(up)));
+}
+
 Mat4 translation(Vec3 offset) { return fromGlm(glm::translate(glm::mat4(1.0f), toGlm(offset))); }
 Mat4 rotation(Quat rotation) { return fromGlm(glm::mat4_cast(toGlm(rotation))); }
 Mat4 scaling(Vec3 scale) { return fromGlm(glm::scale(glm::mat4(1.0f), toGlm(scale))); }

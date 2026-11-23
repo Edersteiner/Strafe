@@ -32,16 +32,19 @@ struct DepthAttachment {
   float clear_depth = 0.0f; // Reverse-Z: 0 is the far plane.
 };
 
-// Moves a whole image (every mip and layer) from one state to another. With
-// discard the old contents are thrown away, which skips the layout conversion,
-// but the barrier still waits for the previous use described by `from`.
-// The aspect must match the image's format; gfx::Image carries it.
+// Moves a range of mips, every mip by default, across all layers from one
+// state to another. With discard the old contents are thrown away, which skips
+// the layout conversion, but the barrier still waits for the previous use
+// described by `from`. The aspect must match the image's format; gfx::Image
+// carries it.
 struct ImageTransition {
   VkImage image = VK_NULL_HANDLE;
   ResourceState from = ResourceState::Undefined;
   ResourceState to = ResourceState::Undefined;
   bool discard = false;
   VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+  uint32_t base_mip = 0;
+  uint32_t mip_count = VK_REMAINING_MIP_LEVELS;
 };
 
 struct RenderingDesc {
@@ -69,14 +72,19 @@ public:
       const Buffer &src, const Buffer &dst, VkDeviceSize size, VkDeviceSize src_offset = 0,
       VkDeviceSize dst_offset = 0);
   void copyBufferToImage(const Buffer &src, const Image &dst);
+  // Downsamples mip `dst_mip - 1` into `dst_mip` with linear filtering. The
+  // source mip must be in TransferSrc and the destination mip in TransferDst.
+  void blitMip(const Image &image, uint32_t dst_mip);
 
   // Rendering
   void beginRendering(const RenderingDesc &desc);
   void endRendering();
 
-  // Dynamic state, covering the whole target with a [0, 1] depth range.
+  // Dynamic state with a [0, 1] depth range.
   void setViewport(VkExtent2D extent);
   void setScissor(VkExtent2D extent);
+  void setViewport(VkRect2D rect);
+  void setScissor(VkRect2D rect);
   void setCullMode(CullMode mode);
   void setDepthMode(DepthMode mode);
 
@@ -92,10 +100,13 @@ public:
   void drawIndexed(
       uint32_t index_count, uint32_t instance_count = 1, uint32_t first_index = 0, int32_t vertex_offset = 0,
       uint32_t first_instance = 0);
+  void draw(uint32_t vertex_count, uint32_t instance_count = 1, uint32_t first_vertex = 0, uint32_t first_instance = 0);
+
+  // The most transitions one call takes.
+  static constexpr uint32_t kMaxTransitions = 16;
 
 private:
   static constexpr uint32_t kMaxColorAttachments = 8;
-  static constexpr uint32_t kMaxTransitions = 16;
 
   void pushConstantsBytes(const void *data, uint32_t size);
 

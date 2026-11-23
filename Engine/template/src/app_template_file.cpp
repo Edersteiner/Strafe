@@ -1,8 +1,8 @@
 #include "app_template_file.h"
 
-#include "strafe/core/log.h"
 #include "strafe/core/math.h"
 #include "strafe/engine.h"
+#include "strafe/input/input_manager.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/renderer.h"
@@ -52,6 +52,9 @@ renderer::MeshData cubeMeshData() {
 } // namespace
 
 bool AppTemplateName::onInit(Engine &engine) {
+  // Actions are named by the game. One bind lists every input that triggers it.
+  engine.input().bind("Quit", {input::Key::Escape});
+
   renderer::Renderer &renderer = engine.renderer();
 
   const renderer::MeshData cube = cubeMeshData();
@@ -75,19 +78,17 @@ bool AppTemplateName::onInit(Engine &engine) {
   return true;
 }
 
-void AppTemplateName::onEvent(Engine &engine, const SDL_Event &event) {
-  if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
+void AppTemplateName::onUpdate(Engine &engine, float delta_seconds) {
+  if (engine.input().isActionJustPressed("Quit")) {
     engine.quit();
   }
+  angle_ += kSpinSpeed * delta_seconds;
 }
 
-void AppTemplateName::onUpdate(Engine &engine, float delta_seconds) { angle_ += kSpinSpeed * delta_seconds; }
-
-void AppTemplateName::onRender(Engine &engine, renderer::FrameDesc &frame) {
-  const Mat4 view = lookAt(kCameraPosition, Vec3(), Vec3(0.0f, 1.0f, 0.0f));
-  const Mat4 projection = renderer::perspective(radians(60.0f), engine.aspect(), 0.1f, 100.0f);
-  frame.view_projection = projection * view;
-  frame.camera_position = kCameraPosition;
+void AppTemplateName::onRender(Engine & /* engine */, renderer::FrameDesc &frame) {
+  frame.camera.transform.position = kCameraPosition;
+  frame.camera.lookAt(Vec3());
+  frame.camera.projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f};
 
   const Vec3 axis(0.3f, 1.0f, 0.2f);
   frame.draws.push_back(

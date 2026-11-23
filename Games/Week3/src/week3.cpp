@@ -2,6 +2,7 @@
 
 #include "strafe/core/math.h"
 #include "strafe/engine.h"
+#include "strafe/input/input_manager.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/renderer.h"
@@ -14,7 +15,6 @@ using namespace strafe;
 
 namespace {
 
-constexpr Vec3 kCameraPosition(0.0f, 2.0f, 6.5f);
 constexpr Vec3 kCameraTarget(0.0f, 0.0f, 2.0f);
 constexpr float kNearPlane = 0.1f;
 constexpr float kFarPlane = 100.0f;
@@ -30,6 +30,10 @@ void cycleDebugView(strafe::renderer::Renderer &renderer) {
 } // namespace
 
 bool Week3::onInit(Engine &engine) {
+  input::InputManager &input = engine.input();
+  input.bind("ToggleProjection", {input::Key::P, input::GamepadButton::North});
+  input.bind("CycleDebugView", {input::Key::D, input::GamepadButton::West});
+
   renderer::Renderer &renderer = engine.renderer();
 
   if (auto tex = renderer::loadTexture("assets/textures/redead_grp.png")) {
@@ -68,26 +72,27 @@ bool Week3::onInit(Engine &engine) {
   return true;
 }
 
-void Week3::onEvent(Engine &engine, const SDL_Event &event) {
-  if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_P) {
+void Week3::onUpdate(Engine &engine, float delta_seconds) {
+  time_ += delta_seconds;
+
+  const input::InputManager &input = engine.input();
+  if (input.isActionJustPressed("ToggleProjection")) {
     perspective_ = !perspective_;
   }
-  if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_D) {
+  if (input.isActionJustPressed("CycleDebugView")) {
     cycleDebugView(engine.renderer());
   }
 }
 
-void Week3::onUpdate(Engine & /* engine */, float delta_seconds) { time_ += delta_seconds; }
-
 void Week3::onRender(Engine &engine, renderer::FrameDesc &frame) {
-  const float aspect = engine.aspect();
-  const Vec3 eye(5.0f * std::sin(time_ * 0.25f), 2.5f, 5.0f * std::cos(time_ * 0.25f));
-  const Mat4 view = lookAt(eye, kCameraTarget, Vec3(0.0f, 1.0f, 0.0f));
-  const Mat4 projection = perspective_ ? renderer::perspective(radians(60.0f), aspect, kNearPlane, kFarPlane)
-                                       : renderer::orthographic(kOrthographicHeight, aspect, kNearPlane, kFarPlane);
-
-  frame.view_projection = projection * view;
-  frame.camera_position = kCameraPosition;
+  renderer::Camera &camera = frame.camera;
+  camera.transform.position = Vec3(5.0f * std::sin(time_ * 0.25f), 2.5f, 5.0f * std::cos(time_ * 0.25f));
+  camera.lookAt(kCameraTarget);
+  camera.projection = perspective_
+      ? renderer::Projection{renderer::Perspective{
+            .fov_y = radians(60.0f), .near_plane = kNearPlane, .far_plane = kFarPlane}}
+      : renderer::Projection{
+            renderer::Orthographic{.height = kOrthographicHeight, .near_plane = kNearPlane, .far_plane = kFarPlane}};
 
   const Vec3 light_position(0.0f, 2.5f, 0.0f);
   const Vec3 light_target(5.0f * std::sin(time_ * 2.5f), 0.0f, 5.0f * std::cos(time_ * 2.5f));

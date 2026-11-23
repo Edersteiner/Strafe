@@ -1,0 +1,25 @@
+name "The Courtyard"
+
+# Floor and wall
+brush  -12 -0.5 -12   12 0 12       color 0.42 0.45 0.4
+brush  -12 0 -12      -11 1.5 12    color 0.6 0.55 0.5
+brush   11 0 -12       12 1.5 12    color 0.6 0.55 0.5
+brush  -11 0 -12       11 1.5 -11   color 0.6 0.55 0.5
+brush  -11 0  11       11 1.5 12    color 0.6 0.55 0.5
+
+# Pillars
+brush  -5 0 -6   -4 5 -5   color 0.75 0.7 0.6
+brush  -5 0 -1   -4 5  0   color 0.75 0.7 0.6
+brush  -5 0  4   -4 5  5   color 0.75 0.7 0.6
+brush   4 0 -6    5 5 -5   color 0.75 0.7 0.6
+brush   4 0 -1    5 5  0   color 0.75 0.7 0.6
+brush   4 0  4    5 5  5   color 0.75 0.7 0.6
+
+# Statue
+brush  -2 0 -2   2 0.8 2     color 0.55 0.6 0.7
+brush  -0.4 0.8 -0.4   0.4 1.6 0.4   color 0.75 0.7 0.6
+object Statue "assets/models/suzanne.obj"  pos 0 2.3 0  rot 0 0 0  scale 0.8  color 0.85 0.85 0.8
+
+marker PlayerStart  pos -1.5 1.5 9
+marker PlayerStart  pos  1.5 1.5 9
+marker Goal         pos 0 2 -8.5  scale 1

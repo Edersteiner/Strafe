@@ -4,6 +4,10 @@ namespace strafe {
 
 class Application;
 
+namespace input {
+class InputManager;
+} // namespace input
+
 namespace renderer {
 class Renderer;
 } // namespace renderer
@@ -15,6 +19,7 @@ public:
   Engine &operator=(const Engine &) = delete;
 
   renderer::Renderer &renderer();
+  input::InputManager &input();
 
   // Width over height of the render target, for projection matrices. 1 while
   // the window is minimized.
