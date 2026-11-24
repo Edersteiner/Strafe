@@ -42,7 +42,7 @@ void initializeImgui(Application &app) {
       .Device = app.device().logicalDevice(),
       .QueueFamily = app.device().graphicsQueueFamily(),
       .Queue = app.device().graphicsQueue(),
-      .DescriptorPool = nullptr, // Todo
+      .DescriptorPool = nullptr,
       .DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE,
       .MinImageCount = 2,
       .ImageCount = app.swapchain().imageCount(),
@@ -54,7 +54,7 @@ void initializeImgui(Application &app) {
                    .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
                    .colorAttachmentCount = 1,
                    .pColorAttachmentFormats = &color_format,
-               }}, // Todo
+               }},
       .UseDynamicRendering = true,
       .Allocator = nullptr,
       .CheckVkResultFn = checkVkResult};
