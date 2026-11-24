@@ -131,7 +131,14 @@ void InputManager::setRelativeMouseMode(bool enabled) {
 
 bool InputManager::isRelativeMouseMode() const { return window_ && SDL_GetWindowRelativeMouseMode(window_); }
 
-void InputManager::beginFrame() { mouse_delta_ = {}; }
+void InputManager::beginFrame() {
+  mouse_delta_ = {};
+  keys_pressed_this_frame_ = {};
+  mouse_buttons_pressed_this_frame_ = {};
+  for (Gamepad &gamepad : gamepads_) {
+    gamepad.buttons_pressed_this_frame = {};
+  }
+}
 
 void InputManager::handleEvents(const SDL_Event &event) {
   static_assert(kKeyCount == SDL_SCANCODE_COUNT);
@@ -140,18 +147,28 @@ void InputManager::handleEvents(const SDL_Event &event) {
   case SDL_EVENT_KEY_UP:
     if (event.key.scancode < kKeyCount) {
       keys_[event.key.scancode] = event.key.down;
+      keys_pressed_this_frame_[event.key.scancode] |= event.key.down;
     }
     break;
   case SDL_EVENT_MOUSE_BUTTON_DOWN:
   case SDL_EVENT_MOUSE_BUTTON_UP:
     if (event.button.button < kMouseButtonCount) {
       mouse_buttons_[event.button.button] = event.button.down;
+      mouse_buttons_pressed_this_frame_[event.button.button] |= event.button.down;
     }
     break;
   case SDL_EVENT_MOUSE_MOTION:
     // Summed, since a fast mouse sends several motion events per frame.
     mouse_delta_ += Vec2(event.motion.xrel, event.motion.yrel);
     break;
+  // Gamepad buttons are polled, so only the down events are needed, for the latch.
+  case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+    const auto it = std::ranges::find(gamepads_, event.gbutton.which, &Gamepad::id);
+    if (it != gamepads_.end() && event.gbutton.button < kGamepadButtonCount) {
+      it->buttons_pressed_this_frame[event.gbutton.button] = true;
+    }
+    break;
+  }
   case SDL_EVENT_GAMEPAD_ADDED:
     addGamepad(event.gdevice.which);
     break;
@@ -173,7 +190,8 @@ void InputManager::pollGamepads() {
   static_assert(kGamepadAxisCount == SDL_GAMEPAD_AXIS_COUNT);
   for (Gamepad &gamepad : gamepads_) {
     for (size_t i = 0; i < kGamepadButtonCount; ++i) {
-      gamepad.buttons[i] = SDL_GetGamepadButton(gamepad.handle, static_cast<SDL_GamepadButton>(i));
+      gamepad.buttons[i] =
+          gamepad.buttons_pressed_this_frame[i] || SDL_GetGamepadButton(gamepad.handle, static_cast<SDL_GamepadButton>(i));
     }
 
     const auto read = [&](GamepadAxis axis) {
@@ -221,9 +239,12 @@ float InputManager::readBinding(const InputBinding &binding, uint8_t player) con
         using Source = decltype(source);
         const auto index = static_cast<size_t>(source);
         if constexpr (std::is_same_v<Source, Key>) {
-          return player == kKeyboardMousePlayer && index < kKeyCount && keys_[index] ? 1.0f : 0.0f;
+          const bool down = index < kKeyCount && (keys_[index] || keys_pressed_this_frame_[index]);
+          return player == kKeyboardMousePlayer && down ? 1.0f : 0.0f;
         } else if constexpr (std::is_same_v<Source, MouseButton>) {
-          return player == kKeyboardMousePlayer && index < kMouseButtonCount && mouse_buttons_[index] ? 1.0f : 0.0f;
+          const bool down =
+              index < kMouseButtonCount && (mouse_buttons_[index] || mouse_buttons_pressed_this_frame_[index]);
+          return player == kKeyboardMousePlayer && down ? 1.0f : 0.0f;
         } else {
           // The strongest of every pad this player owns.
           float value = 0.0f;

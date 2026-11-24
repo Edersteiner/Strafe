@@ -105,6 +105,7 @@ private:
     uint8_t player = kNoPlayer;
     std::array<float, kGamepadAxisCount> axes{};
     std::array<bool, kGamepadButtonCount> buttons{};
+    std::array<bool, kGamepadButtonCount> buttons_pressed_this_frame{};
   };
 
   // Lets the maps below be searched with a string_view without building a std::string.
@@ -138,6 +139,8 @@ private:
 
   std::array<bool, kKeyCount> keys_{};
   std::array<bool, kMouseButtonCount> mouse_buttons_{};
+  std::array<bool, kKeyCount> keys_pressed_this_frame_{};
+  std::array<bool, kMouseButtonCount> mouse_buttons_pressed_this_frame_{};
   Vec2 mouse_delta_;
   std::vector<Gamepad> gamepads_;
 };
