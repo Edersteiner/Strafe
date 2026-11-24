@@ -1,13 +1,12 @@
 #pragma once
 
+#include "input/input_manager.h"
 #include "strafe/app.h"
 #include "strafe/core/type_registry.h"
 #include "strafe/engine.h"
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
 #include "strafe/gfx/swapchain.h"
-#include "strafe/input/input_manager.h"
-#include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/renderer.h"
 
 #include <SDL3/SDL.h>
@@ -17,10 +16,11 @@
 namespace strafe {
 
 // The engine's main loop and everything it owns: the window, the GPU and the
-// renderer. Private to the engine; apps see it through Engine and run().
+// renderer. Private to the engine; apps see it through run() and the
+// Engine, Input and Renderer facades.
 class Application {
 public:
-  explicit Application(App &app) : app_(app), engine_(*this) {}
+  explicit Application(App &app) : app_(app) {}
 
   Application(const Application &) = delete;
   Application &operator=(const Application &) = delete;
@@ -33,20 +33,22 @@ public:
   gfx::Device &device() { return device_; }
   gfx::Swapchain &swapchain() { return swapchain_; }
 
-  // Behind Engine.
   renderer::Renderer &renderer() { return renderer_; }
-  input::InputManager &input() { return input_; }
+
+  // Behind Engine.
   const reflect::TypeRegistry &types() const { return types_; }
   float time() const;
   void quit() { running_ = false; }
 
 private:
   bool registerTypes();
+  // Points the facades at this application's subsystems, or at nothing.
+  void bindFacades();
+  void unbindFacades();
   bool initializeVulkan();
   void render();
 
   App &app_;
-  Engine engine_;
   // onShutdown only runs for an app whose onInit was called.
   bool app_initialized_ = false;
   bool running_ = false;
@@ -63,7 +65,6 @@ private:
 
   input::InputManager input_;
   renderer::Renderer renderer_;
-  renderer::FrameDesc frame_desc_;
 };
 
 } // namespace strafe

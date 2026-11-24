@@ -47,6 +47,9 @@ CheckOptions:
   readability-identifier-naming.MemberCase: lower_case
   readability-identifier-naming.PrivateMemberSuffix: _
   readability-identifier-naming.ProtectedMemberSuffix: _
+  # Static data members, such as the pointer behind each engine facade.
+  readability-identifier-naming.ClassMemberCase: lower_case
+  readability-identifier-naming.ClassMemberSuffix: _
 
   # kCamelCase for compile time and static storage constants only.
   # Local const variables stay lower_case.

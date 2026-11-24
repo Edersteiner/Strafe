@@ -1,4 +1,4 @@
-#include "strafe/input/input_manager.h"
+#include "input/input_manager.h"
 
 #include "strafe/core/log.h"
 
@@ -54,23 +54,6 @@ Vec2 applyRadialDeadzone(Vec2 stick) {
 
 void InputManager::initialize(SDL_Window *window) { window_ = window; }
 
-void InputManager::bind(
-    std::string_view action_name, std::initializer_list<InputSource> bindings, AxisDirection axis_direction) {
-  auto it = actions_.find(action_name);
-  if (it == actions_.end()) {
-    it = actions_.emplace(std::string(action_name), InputAction{}).first;
-  }
-  for (const InputSource &source : bindings) {
-    it->second.bindings.push_back({.source = source, .axis_direction = axis_direction});
-  }
-}
-
-void InputManager::setPlayerCount(uint8_t count) {
-  assert(count >= 1 && count <= kMaxPlayers && "player count out of range");
-  player_count_ = std::clamp<uint8_t>(count, 1, kMaxPlayers);
-  assignDevices();
-}
-
 template <typename Predicate>
 bool InputManager::anyPlayer(std::string_view action_name, uint8_t player_id, Predicate predicate) const {
   const InputAction *action = findAction(action_name);
@@ -82,54 +65,6 @@ bool InputManager::anyPlayer(std::string_view action_name, uint8_t player_id, Pr
   }
   return std::ranges::any_of(action->players, predicate);
 }
-
-bool InputManager::isActionPressed(std::string_view action_name, uint8_t player_id) const {
-  return anyPlayer(action_name, player_id, [](const InputAction::PlayerState &state) { return state.pressed; });
-}
-
-bool InputManager::isActionJustPressed(std::string_view action_name, uint8_t player_id) const {
-  return anyPlayer(action_name, player_id, [](const InputAction::PlayerState &state) { return state.just_pressed; });
-}
-
-bool InputManager::isActionJustReleased(std::string_view action_name, uint8_t player_id) const {
-  return anyPlayer(action_name, player_id, [](const InputAction::PlayerState &state) { return state.just_released; });
-}
-
-float InputManager::getActionAxisValue(std::string_view action_name, uint8_t player_id) const {
-  const InputAction *action = findAction(action_name);
-  if (!action) {
-    return 0.0f;
-  }
-  if (player_id != kAnyPlayer) {
-    return player_id < kMaxPlayers ? action->players[player_id].axis_value : 0.0f;
-  }
-  float value = 0.0f;
-  for (const InputAction::PlayerState &state : action->players) {
-    value = std::max(value, state.axis_value);
-  }
-  return value;
-}
-
-Vec2 InputManager::getVector(
-    std::string_view positive_x, std::string_view negative_x, std::string_view positive_y, std::string_view negative_y,
-    uint8_t player_id) const {
-  const Vec2 vector(
-      getActionAxisValue(positive_x, player_id) - getActionAxisValue(negative_x, player_id),
-      getActionAxisValue(positive_y, player_id) - getActionAxisValue(negative_y, player_id));
-  return length(vector) > 1.0f ? normalize(vector) : vector;
-}
-
-Vec2 InputManager::mouseDelta(uint8_t player_id) const {
-  return player_id == kAnyPlayer || player_id == kKeyboardMousePlayer ? mouse_delta_ : Vec2{};
-}
-
-void InputManager::setRelativeMouseMode(bool enabled) {
-  if (window_ && !SDL_SetWindowRelativeMouseMode(window_, enabled)) {
-    log::warn("Failed to set relative mouse mode: {}", SDL_GetError());
-  }
-}
-
-bool InputManager::isRelativeMouseMode() const { return window_ && SDL_GetWindowRelativeMouseMode(window_); }
 
 void InputManager::beginFrame() {
   mouse_delta_ = {};
@@ -190,8 +125,8 @@ void InputManager::pollGamepads() {
   static_assert(kGamepadAxisCount == SDL_GAMEPAD_AXIS_COUNT);
   for (Gamepad &gamepad : gamepads_) {
     for (size_t i = 0; i < kGamepadButtonCount; ++i) {
-      gamepad.buttons[i] =
-          gamepad.buttons_pressed_this_frame[i] || SDL_GetGamepadButton(gamepad.handle, static_cast<SDL_GamepadButton>(i));
+      gamepad.buttons[i] = gamepad.buttons_pressed_this_frame[i] ||
+          SDL_GetGamepadButton(gamepad.handle, static_cast<SDL_GamepadButton>(i));
     }
 
     const auto read = [&](GamepadAxis axis) {
@@ -333,3 +268,93 @@ void InputManager::removeGamepad(uint32_t id) {
 }
 
 } // namespace strafe::input
+
+namespace strafe {
+
+input::InputManager *Input::manager_ = nullptr;
+
+input::InputManager &Input::manager() {
+  assert(manager_ && "Input is only usable from App::onInit until App::onShutdown returns");
+  return *manager_;
+}
+
+void Input::bind(
+    std::string_view action_name, std::initializer_list<input::InputSource> bindings,
+    input::AxisDirection axis_direction) {
+  auto &actions = manager().actions_;
+  auto it = actions.find(action_name);
+  if (it == actions.end()) {
+    it = actions.emplace(std::string(action_name), input::InputAction{}).first;
+  }
+  for (const input::InputSource &source : bindings) {
+    it->second.bindings.push_back({.source = source, .axis_direction = axis_direction});
+  }
+}
+
+void Input::setPlayerCount(uint8_t count) {
+  assert(count >= 1 && count <= input::kMaxPlayers && "player count out of range");
+  input::InputManager &state = manager();
+  state.player_count_ = std::clamp<uint8_t>(count, 1, input::kMaxPlayers);
+  state.assignDevices();
+}
+
+uint8_t Input::playerCount() { return manager().player_count_; }
+
+bool Input::isActionPressed(std::string_view action_name, uint8_t player_id) {
+  return manager().anyPlayer(
+      action_name, player_id, [](const input::InputAction::PlayerState &state) { return state.pressed; });
+}
+
+bool Input::isActionJustPressed(std::string_view action_name, uint8_t player_id) {
+  return manager().anyPlayer(
+      action_name, player_id, [](const input::InputAction::PlayerState &state) { return state.just_pressed; });
+}
+
+bool Input::isActionJustReleased(std::string_view action_name, uint8_t player_id) {
+  return manager().anyPlayer(
+      action_name, player_id, [](const input::InputAction::PlayerState &state) { return state.just_released; });
+}
+
+float Input::getActionAxisValue(std::string_view action_name, uint8_t player_id) {
+  const input::InputAction *action = manager().findAction(action_name);
+  if (!action) {
+    return 0.0f;
+  }
+  if (player_id != input::kAnyPlayer) {
+    return player_id < input::kMaxPlayers ? action->players[player_id].axis_value : 0.0f;
+  }
+  float value = 0.0f;
+  for (const input::InputAction::PlayerState &state : action->players) {
+    value = std::max(value, state.axis_value);
+  }
+  return value;
+}
+
+Vec2 Input::getVector(
+    std::string_view positive_x, std::string_view negative_x, std::string_view positive_y, std::string_view negative_y,
+    uint8_t player_id) {
+  const Vec2 vector(
+      getActionAxisValue(positive_x, player_id) - getActionAxisValue(negative_x, player_id),
+      getActionAxisValue(positive_y, player_id) - getActionAxisValue(negative_y, player_id));
+  return length(vector) > 1.0f ? normalize(vector) : vector;
+}
+
+Vec2 Input::mouseDelta(uint8_t player_id) {
+  const input::InputManager &state = manager();
+  const bool owns_mouse = player_id == input::kAnyPlayer || player_id == input::InputManager::kKeyboardMousePlayer;
+  return owns_mouse ? state.mouse_delta_ : Vec2{};
+}
+
+void Input::setRelativeMouseMode(bool enabled) {
+  SDL_Window *window = manager().window_;
+  if (window && !SDL_SetWindowRelativeMouseMode(window, enabled)) {
+    log::warn("Failed to set relative mouse mode: {}", SDL_GetError());
+  }
+}
+
+bool Input::isRelativeMouseMode() {
+  SDL_Window *window = manager().window_;
+  return window && SDL_GetWindowRelativeMouseMode(window);
+}
+
+} // namespace strafe

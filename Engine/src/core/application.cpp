@@ -2,11 +2,12 @@
 
 #include "strafe/core/log.h"
 #include "strafe/gfx/vk_check.h"
+#include "strafe/input.h"
+#include "strafe/renderer.h"
 #include "strafe/ui/imgui_impl.h"
 
+#include <cassert>
 #include <optional>
-#include <utility>
-#include <vector>
 
 #include <imgui.h>
 
@@ -45,8 +46,9 @@ bool Application::initialize(const AppConfig &config) {
 
   ui::initializeImgui(*this);
 
+  bindFacades();
   app_initialized_ = true;
-  if (!app_.onInit(engine_)) {
+  if (!app_.onInit()) {
     log::error("The app failed to initialize");
     return false;
   }
@@ -64,6 +66,18 @@ bool Application::registerTypes() {
   }
   log::debug("Registered {} types", types_.types().size());
   return true;
+}
+
+void Application::bindFacades() {
+  Engine::application_ = this;
+  Input::manager_ = &input_;
+  Renderer::renderer_ = &renderer_;
+}
+
+void Application::unbindFacades() {
+  Engine::application_ = nullptr;
+  Input::manager_ = nullptr;
+  Renderer::renderer_ = nullptr;
 }
 
 bool Application::initializeVulkan() {
@@ -111,11 +125,12 @@ void Application::run() {
       break;
     }
     input_.update();
+    renderer_.beginFrame(time());
 
     const uint64_t now_ns = SDL_GetTicksNS();
     const float delta_seconds = static_cast<float>(now_ns - last_ticks_ns) / 1'000'000'000.0f;
     last_ticks_ns = now_ns;
-    app_.onUpdate(engine_, delta_seconds);
+    app_.onUpdate(delta_seconds);
 
     render();
   }
@@ -137,23 +152,13 @@ void Application::render() {
     return;
   }
 
-  // A fresh frame each time, but the lists keep their allocations.
-  std::vector<renderer::DrawItem> draws = std::move(frame_desc_.draws);
-  std::vector<renderer::ViewDesc> views = std::move(frame_desc_.views);
-  draws.clear();
-  views.clear();
-  frame_desc_ = {};
-  frame_desc_.draws = std::move(draws);
-  frame_desc_.views = std::move(views);
-  frame_desc_.time = time();
+  ui::beginRenderImgui(Input::isRelativeMouseMode());
 
-  ui::beginRenderImgui(input_.isRelativeMouseMode());
-
-  app_.onRender(engine_, frame_desc_);
+  app_.onRender();
 
   ui::endRenderImgui();
 
-  renderer_.render(*frame, frame_desc_);
+  renderer_.render(*frame);
   frame_ring_.endFrame(*frame, swapchain_);
 }
 
@@ -164,8 +169,9 @@ void Application::shutdown() {
 
   // Before the renderer, so the app can still use its ids.
   if (app_initialized_) {
-    app_.onShutdown(engine_);
+    app_.onShutdown();
   }
+  unbindFacades();
 
   ui::shutdownImgui();
 
@@ -185,13 +191,16 @@ void Application::shutdown() {
 
 float Application::time() const { return static_cast<float>(SDL_GetTicksNS() - start_ticks_ns_) / 1'000'000'000.0f; }
 
-// Engine forwards to the Application that owns it.
+Application *Engine::application_ = nullptr;
 
-renderer::Renderer &Engine::renderer() { return application_->renderer(); }
-input::InputManager &Engine::input() { return application_->input(); }
-const reflect::TypeRegistry &Engine::types() const { return application_->types(); }
-float Engine::time() const { return application_->time(); }
-void Engine::quit() { application_->quit(); }
+Application &Engine::application() {
+  assert(application_ && "Engine is only usable from App::onInit until App::onShutdown returns");
+  return *application_;
+}
+
+const reflect::TypeRegistry &Engine::types() { return application().types(); }
+float Engine::time() { return application().time(); }
+void Engine::quit() { application().quit(); }
 
 int run(App &app, const AppConfig &config) {
   Application application(app);

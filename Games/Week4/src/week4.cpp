@@ -3,11 +3,9 @@
 #include "strafe/core/log.h"
 #include "strafe/core/math.h"
 #include "strafe/engine.h"
-#include "strafe/input/input_manager.h"
+#include "strafe/input.h"
+#include "strafe/renderer.h"
 #include "strafe/renderer/camera.h"
-#include "strafe/renderer/frame_desc.h"
-#include "strafe/renderer/primitives.h"
-#include "strafe/renderer/renderer.h"
 
 #include <array>
 #include <cstdint>
@@ -36,41 +34,38 @@ renderer::Camera cameraFor(const FlyCamera &fly_camera) {
       .projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f}};
 }
 
-std::optional<renderer::MaterialId> createTinted(renderer::Renderer &renderer, gfx::ShaderId shader, Vec4 tint) {
-  const std::optional<renderer::MaterialId> material = renderer.createMaterial(shader);
+std::optional<renderer::MaterialId> createTinted(gfx::ShaderId shader, Vec4 tint) {
+  const std::optional<renderer::MaterialId> material = Renderer::createMaterial(shader);
   if (material) {
-    renderer.setParam(*material, "tint", tint);
+    Renderer::setParam(*material, "tint", tint);
   }
   return material;
 }
 
 } // namespace
 
-bool Week4::onInit(Engine &engine) {
-  input::InputManager &input = engine.input();
+bool Week4::onInit() {
+  FlyCamera::bindActions();
 
-  FlyCamera::bindActions(input);
+  Input::bind("Quit", {input::Key::Escape});
+  Input::bind("CaptureMouse", {input::MouseButton::Left});
+  Input::bind("ToggleSplitscreen", {input::Key::Tab, input::GamepadButton::Back});
+  Input::bind("NextScene", {input::Key::Right, input::GamepadButton::DpadRight});
+  Input::bind("PreviousScene", {input::Key::Left, input::GamepadButton::DpadLeft});
+  Input::bind("ReloadScene", {input::Key::R});
 
-  input.bind("Quit", {input::Key::Escape});
-  input.bind("CaptureMouse", {input::MouseButton::Left});
-  input.bind("ToggleSplitscreen", {input::Key::Tab, input::GamepadButton::Back});
-  input.bind("NextScene", {input::Key::Right, input::GamepadButton::DpadRight});
-  input.bind("PreviousScene", {input::Key::Left, input::GamepadButton::DpadLeft});
-  input.bind("ReloadScene", {input::Key::R});
-
-  renderer::Renderer &renderer = engine.renderer();
-  const std::optional<gfx::ShaderId> lit = renderer.loadShader("lit");
+  const std::optional<gfx::ShaderId> lit = Renderer::loadShader("lit");
   if (!lit) {
     return false;
   }
   for (size_t i = 0; i < player_materials_.size(); ++i) {
-    const std::optional<renderer::MaterialId> material = createTinted(renderer, *lit, kPlayerTints[i]);
+    const std::optional<renderer::MaterialId> material = createTinted(*lit, kPlayerTints[i]);
     if (!material) {
       return false;
     }
     player_materials_[i] = *material;
   }
-  const std::optional<renderer::MaterialId> goal_material = createTinted(renderer, *lit, kGoalTint);
+  const std::optional<renderer::MaterialId> goal_material = createTinted(*lit, kGoalTint);
   if (!goal_material) {
     return false;
   }
@@ -79,41 +74,40 @@ bool Week4::onInit(Engine &engine) {
   if (!loadScene(0)) {
     return false;
   }
-  setMouseCaptured(engine, true);
+  setMouseCaptured(true);
   return true;
 }
 
-void Week4::onUpdate(Engine &engine, float delta_seconds) {
-  input::InputManager &input = engine.input();
-  if (input.isActionJustPressed("Quit")) {
+void Week4::onUpdate(float delta_seconds) {
+  if (Input::isActionJustPressed("Quit")) {
     if (mouse_captured_) {
-      setMouseCaptured(engine, false);
+      setMouseCaptured(false);
     } else {
-      engine.quit();
+      Engine::quit();
     }
-  } else if (!mouse_captured_ && input.isActionJustPressed("CaptureMouse")) {
-    setMouseCaptured(engine, true);
+  } else if (!mouse_captured_ && Input::isActionJustPressed("CaptureMouse")) {
+    setMouseCaptured(true);
   }
 
   // Keyboard and mouse stay with player 0, the first gamepad moves to player 1.
-  if (input.isActionJustPressed("ToggleSplitscreen")) {
-    input.setPlayerCount(input.playerCount() == 1 ? kPlayerCount : 1);
+  if (Input::isActionJustPressed("ToggleSplitscreen")) {
+    Input::setPlayerCount(Input::playerCount() == 1 ? kPlayerCount : 1);
   }
 
-  if (input.isActionJustPressed("NextScene")) {
+  if (Input::isActionJustPressed("NextScene")) {
     loadScene((scene_index_ + 1) % kScenePaths.size());
-  } else if (input.isActionJustPressed("PreviousScene")) {
+  } else if (Input::isActionJustPressed("PreviousScene")) {
     loadScene((scene_index_ + kScenePaths.size() - 1) % kScenePaths.size());
-  } else if (input.isActionJustPressed("ReloadScene")) {
+  } else if (Input::isActionJustPressed("ReloadScene")) {
     loadScene(scene_index_);
   }
 
-  for (uint8_t player = 0; player < input.playerCount(); ++player) {
-    cameras_[player].update(input, player, delta_seconds, mouse_captured_ && player == 0);
+  for (uint8_t player = 0; player < Input::playerCount(); ++player) {
+    cameras_[player].update(player, delta_seconds, mouse_captured_ && player == 0);
   }
 
   if (const scene::Marker *goal = scene_.findMarker("Goal")) {
-    for (uint8_t player = 0; player < input.playerCount(); ++player) {
+    for (uint8_t player = 0; player < Input::playerCount(); ++player) {
       if (length(cameras_[player].position - goal->transform.position) <= goal->transform.scale.x) {
         log::info("Player {} reached the goal of '{}'", player + 1, scene_.name);
         loadScene((scene_index_ + 1) % kScenePaths.size());
@@ -144,14 +138,14 @@ bool Week4::loadScene(size_t index) {
   return true;
 }
 
-void Week4::setMouseCaptured(Engine &engine, bool captured) {
-  engine.input().setRelativeMouseMode(captured);
+void Week4::setMouseCaptured(bool captured) {
+  Input::setRelativeMouseMode(captured);
   mouse_captured_ = captured;
 }
 
-void Week4::onRender(Engine &engine, renderer::FrameDesc &frame) {
-  renderer::Renderer &renderer = engine.renderer();
-  const uint8_t player_count = engine.input().playerCount();
+void Week4::onRender() {
+  renderer::FrameDesc &frame = Renderer::frame();
+  const uint8_t player_count = Input::playerCount();
   if (player_count == 1) {
     frame.camera = cameraFor(cameras_[0]);
   } else {
@@ -159,11 +153,11 @@ void Week4::onRender(Engine &engine, renderer::FrameDesc &frame) {
     frame.views.push_back({.id = {1}, .camera = cameraFor(cameras_[1]), .region = renderer::ScreenRegion::right()});
   }
 
-  scene_renderer_.draw(renderer, scene_, frame);
+  scene_renderer_.draw(scene_);
 
   if (const scene::Marker *goal = scene_.findMarker("Goal")) {
-    frame.draws.push_back(
-        {.mesh = renderer.primitive(renderer::Primitive::Sphere),
+    Renderer::draw(
+        {.mesh = Renderer::primitive(renderer::Primitive::Sphere),
          .material = goal_material_,
          .transform = {.position = goal->transform.position, .scale = Vec3(2.0f * goal->transform.scale.x)}});
   }
@@ -172,8 +166,8 @@ void Week4::onRender(Engine &engine, renderer::FrameDesc &frame) {
     const FlyCamera &camera = cameras_[player];
     const Quat rotation = camera.rotation();
     const Quat facing = Quat::fromAxisAngle(Vec3(0.0f, 1.0f, 0.0f), kPi);
-    renderer.renderObj(
-        frame, kPlayerModel, player_materials_[player],
+    Renderer::renderObj(
+        kPlayerModel, player_materials_[player],
         {.position = camera.position + rotation * Vec3(0.0f, 0.0f, kMarkerBackOffset),
          .rotation = rotation * facing,
          .scale = Vec3(kMarkerSize)});

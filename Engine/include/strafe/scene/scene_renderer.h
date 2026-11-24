@@ -8,11 +8,6 @@
 #include <utility>
 #include <vector>
 
-namespace strafe::renderer {
-class Renderer;
-struct FrameDesc;
-} // namespace strafe::renderer
-
 namespace strafe::scene {
 
 struct Scene;
@@ -20,11 +15,11 @@ struct Scene;
 // Turns a scene into draws, with the lit shader tinted by each color.
 class SceneRenderer {
 public:
-  void draw(renderer::Renderer &renderer, const Scene &scene, renderer::FrameDesc &frame);
+  void draw(const Scene &scene);
 
 private:
   // Invalid if the shader or material failed, which makes the draws skip.
-  renderer::MaterialId materialFor(renderer::Renderer &renderer, Vec4 color);
+  renderer::MaterialId materialFor(Vec4 color);
 
   std::optional<gfx::ShaderId> lit_;
   std::vector<std::pair<Vec4, renderer::MaterialId>> materials_;

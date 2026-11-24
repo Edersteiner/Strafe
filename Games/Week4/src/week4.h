@@ -14,16 +14,16 @@
 // Week 4: fly through three scenes to their goals, alone or in splitscreen.
 class Week4 : public strafe::App {
 public:
-  bool onInit(strafe::Engine &engine) override;
-  void onUpdate(strafe::Engine &engine, float delta_seconds) override;
-  void onRender(strafe::Engine &engine, strafe::renderer::FrameDesc &frame) override;
+  bool onInit() override;
+  void onUpdate(float delta_seconds) override;
+  void onRender() override;
 
 private:
   static constexpr uint8_t kPlayerCount = 2;
 
   // Moves every player to the scene's starts. Keeps the current scene on failure.
   bool loadScene(size_t index);
-  void setMouseCaptured(strafe::Engine &engine, bool captured);
+  void setMouseCaptured(bool captured);
 
   strafe::scene::Scene scene_;
   size_t scene_index_ = 0;

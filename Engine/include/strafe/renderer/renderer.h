@@ -6,6 +6,7 @@
 #include "strafe/gfx/image.h"
 #include "strafe/gfx/pipeline_manager.h"
 #include "strafe/gfx/uploader.h"
+#include "strafe/renderer.h"
 #include "strafe/renderer/frame_desc.h"
 #include "strafe/renderer/material.h"
 #include "strafe/renderer/mesh.h"
@@ -33,8 +34,6 @@ class Swapchain;
 } // namespace strafe::gfx
 
 namespace strafe::renderer {
-
-enum class DebugView : std::int8_t { None, Wireframe, Normals, DrawId, Count };
 
 class Renderer {
 public:
@@ -72,12 +71,16 @@ public:
   // Sets one material field by name.
   bool setParam(MaterialId material, std::string_view name, const MaterialParam &value);
 
-  // Adds a draw of the OBJ file at path. Caches loaded files and reuses them.
-  bool renderObj(FrameDesc &frame, const std::string &path, MaterialId material, const Transform &transform);
+  // Clears the frame for the app to fill, keeping the lists' allocations.
+  void beginFrame(float time);
+  FrameDesc &frame() { return frame_; }
 
-  // Renders every view in desc into its own target, then composites them
-  // into their regions of the swapchain image.
-  void render(const gfx::FrameContext &ctx, const FrameDesc &desc);
+  // Adds a draw of the OBJ file at path. Caches loaded files and reuses them.
+  bool renderObj(const std::string &path, MaterialId material, const Transform &transform);
+
+  // Renders every view of the frame into its own target, then composites
+  // them into their regions of the swapchain image.
+  void render(const gfx::FrameContext &ctx);
 
   void setDebugView(DebugView view) { debug_view_ = view; }
   DebugView debugView() const { return debug_view_; }
@@ -134,6 +137,7 @@ private:
   gfx::Uploader uploader_;
   gfx::BindlessSet bindless_;
 
+  FrameDesc frame_;
   TextureTable textures_;
   std::vector<View> views_;
   // Composite materials of evicted views, reused by new ones.

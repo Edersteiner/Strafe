@@ -21,6 +21,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/glm_interop.h"
@@ -319,7 +320,7 @@ MeshId Renderer::primitive(Primitive primitive) {
   return *mesh;
 }
 
-bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId material, const Transform &transform) {
+bool Renderer::renderObj(const std::string &path, MaterialId material, const Transform &transform) {
   auto it = obj_meshes_.find(path);
   if (it == obj_meshes_.end()) {
     MeshId mesh{};
@@ -332,7 +333,7 @@ bool Renderer::renderObj(FrameDesc &frame, const std::string &path, MaterialId m
   if (!it->second.valid()) {
     return false;
   }
-  frame.draws.push_back({.mesh = it->second, .material = material, .transform = transform});
+  frame_.draws.push_back({.mesh = it->second, .material = material, .transform = transform});
   return true;
 }
 
@@ -347,7 +348,19 @@ void Renderer::deferDestroyMesh(const Mesh &mesh) {
   });
 }
 
-void Renderer::render(const gfx::FrameContext &ctx, const FrameDesc &desc) {
+void Renderer::beginFrame(float time) {
+  std::vector<DrawItem> draws = std::move(frame_.draws);
+  std::vector<ViewDesc> views = std::move(frame_.views);
+  draws.clear();
+  views.clear();
+  frame_ = {};
+  frame_.draws = std::move(draws);
+  frame_.views = std::move(views);
+  frame_.time = time;
+}
+
+void Renderer::render(const gfx::FrameContext &ctx) {
+  const FrameDesc &desc = frame_;
   gfx::CommandList cmd(ctx.cmd);
   bindless_bound_ = false;
   ++frame_count_;

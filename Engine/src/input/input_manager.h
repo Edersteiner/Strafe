@@ -1,35 +1,23 @@
 #pragma once
 
-#include "input_codes.h"
-
 #include "strafe/core/math.h"
+#include "strafe/input.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
-#include <variant>
 #include <vector>
 
 union SDL_Event;
 struct SDL_Gamepad;
 struct SDL_Window;
 
-namespace strafe {
-class Application;
-} // namespace strafe
-
 namespace strafe::input {
-
-inline constexpr uint8_t kMaxPlayers = 4;
-inline constexpr uint8_t kAnyPlayer = UINT8_MAX;
-
-using InputSource = std::variant<Key, MouseButton, GamepadButton, GamepadAxis>;
 
 struct InputBinding {
   InputSource source;
@@ -50,45 +38,23 @@ struct InputAction {
   std::array<PlayerState, kMaxPlayers> players{};
 };
 
-// Named actions on top of the keyboard, mouse and gamepads.
+// The state behind Input. Application owns it and drives its frame, and the
+// queries live on Input.
 class InputManager {
 public:
   InputManager() = default;
   InputManager(const InputManager &) = delete;
   InputManager &operator=(const InputManager &) = delete;
 
-  // Adds the bindings to the action, creating it on first use.
-  void bind(
-      std::string_view action_name, std::initializer_list<InputSource> bindings,
-      AxisDirection axis_direction = AxisDirection::Positive);
+  void initialize(SDL_Window *window);
+  void shutdown();
 
-  // Keyboard and mouse go to player 0, gamepads to players 1 and up in
-  // connection order. With one player, player 0 owns every device.
-  void setPlayerCount(uint8_t count);
-  uint8_t playerCount() const { return player_count_; }
-
-  // Each query reads that player's devices, or every player's by default.
-  bool isActionPressed(std::string_view action_name, uint8_t player_id = kAnyPlayer) const;
-  bool isActionJustPressed(std::string_view action_name, uint8_t player_id = kAnyPlayer) const;
-  bool isActionJustReleased(std::string_view action_name, uint8_t player_id = kAnyPlayer) const;
-
-  // 0 to 1. Keys and buttons give 0 or 1, axes how far past the deadzone.
-  float getActionAxisValue(std::string_view action_name, uint8_t player_id = kAnyPlayer) const;
-  // Positive minus negative on each axis, clamped to length 1. Diagonals on
-  // keys don't move faster, and a half tilted stick stays at half.
-  Vec2 getVector(
-      std::string_view positive_x, std::string_view negative_x, std::string_view positive_y,
-      std::string_view negative_y, uint8_t player_id = kAnyPlayer) const;
-
-  // Pixels moved this frame, +y down. A distance, so don't scale it by delta
-  // time. Zero for players who don't own the mouse.
-  Vec2 mouseDelta(uint8_t player_id = kAnyPlayer) const;
-  // Hides the cursor and keeps reporting motion past the window's edges.
-  void setRelativeMouseMode(bool enabled);
-  bool isRelativeMouseMode() const;
+  void beginFrame();
+  void handleEvents(const SDL_Event &event);
+  void update();
 
 private:
-  friend class strafe::Application;
+  friend class strafe::Input;
 
   static constexpr uint8_t kNoPlayer = UINT8_MAX - 1;
   static constexpr uint8_t kKeyboardMousePlayer = 0;
@@ -113,13 +79,6 @@ private:
     using is_transparent = void; // NOLINT(readability-identifier-naming): the standard library's name.
     size_t operator()(std::string_view name) const { return std::hash<std::string_view>{}(name); }
   };
-
-  void initialize(SDL_Window *window);
-  void shutdown();
-
-  void beginFrame();
-  void handleEvents(const SDL_Event &event);
-  void update();
 
   void pollGamepads();
   void updateActions();

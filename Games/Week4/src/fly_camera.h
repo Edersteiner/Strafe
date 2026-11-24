@@ -4,10 +4,6 @@
 
 #include <cstdint>
 
-namespace strafe::input {
-class InputManager;
-} // namespace strafe::input
-
 struct [[reflect]] FlyCamera {
   strafe::Vec3 position;
   float yaw = 0.0f;
@@ -18,9 +14,9 @@ struct [[reflect]] FlyCamera {
   float stick_turn_speed = strafe::radians(150.0f);
   float mouse_sensitivity = 0.0025f;
 
-  static void bindActions(strafe::input::InputManager &input);
+  static void bindActions();
   void lookAt(strafe::Vec3 target);
-  void update(const strafe::input::InputManager &input, uint8_t player, float delta_seconds, bool mouse_look);
+  void update(uint8_t player, float delta_seconds, bool mouse_look);
   strafe::Quat rotation() const;
 };
 

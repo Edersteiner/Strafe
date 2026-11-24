@@ -4,12 +4,6 @@
 
 namespace strafe {
 
-class Engine;
-
-namespace renderer {
-struct FrameDesc;
-} // namespace renderer
-
 struct AppConfig {
   std::string title = "Strafe";
   // The window's starting size in screen coordinates.
@@ -17,24 +11,26 @@ struct AppConfig {
   int height = 720;
 };
 
-// Each game implements this
+// Each game implements this. Engine, Input and Renderer are usable from
+// onInit until onShutdown returns.
 class App {
 public:
   virtual ~App() = default;
 
   // Load meshes, textures, shaders and materials. Returning false quits
   // before the first frame.
-  virtual bool onInit(Engine &engine) = 0;
+  virtual bool onInit() = 0;
 
-  // Delta seconds since the previous frame.
-  virtual void onUpdate(Engine &engine, float delta_seconds) {}
+  // Delta seconds since the previous frame. Draws can be added here or in
+  // onRender.
+  virtual void onUpdate(float delta_seconds) {}
 
-  // Fill in the camera, light and draws. The frame starts out default
-  // constructed with no draws.
-  virtual void onRender(Engine &engine, renderer::FrameDesc &frame) = 0;
+  // Fill in Renderer::frame's camera and light, and add draws. Runs once the
+  // GPU has a frame to draw into, inside the ImGui frame.
+  virtual void onRender() = 0;
 
   // Runs while the GPU and renderer are still alive, so ids are still valid.
-  virtual void onShutdown(Engine &engine) {}
+  virtual void onShutdown() {}
 };
 
 // Opens the window, runs the app until it or the user quits, and tears

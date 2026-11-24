@@ -11,9 +11,9 @@
 // the exe, e.g. "assets/models/thing.obj".
 class AppTemplateName : public strafe::App {
 public:
-  bool onInit(strafe::Engine &engine) override;
-  void onUpdate(strafe::Engine &engine, float delta_seconds) override;
-  void onRender(strafe::Engine &engine, strafe::renderer::FrameDesc &frame) override;
+  bool onInit() override;
+  void onUpdate(float delta_seconds) override;
+  void onRender() override;
 
 private:
   strafe::renderer::MaterialId material_;
