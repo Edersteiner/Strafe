@@ -167,21 +167,12 @@ void Application::shutdown() {
   SDL_Quit();
 }
 
-float Application::aspect() const {
-  const VkExtent2D extent = swapchain_.extent();
-  if (extent.width == 0 || extent.height == 0) {
-    return 1.0f;
-  }
-  return static_cast<float>(extent.width) / static_cast<float>(extent.height);
-}
-
 float Application::time() const { return static_cast<float>(SDL_GetTicksNS() - start_ticks_ns_) / 1'000'000'000.0f; }
 
 // Engine forwards to the Application that owns it.
 
 renderer::Renderer &Engine::renderer() { return application_->renderer(); }
 input::InputManager &Engine::input() { return application_->input(); }
-float Engine::aspect() const { return application_->aspect(); }
 float Engine::time() const { return application_->time(); }
 void Engine::quit() { application_->quit(); }
 

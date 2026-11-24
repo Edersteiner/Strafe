@@ -21,10 +21,6 @@ public:
   renderer::Renderer &renderer();
   input::InputManager &input();
 
-  // Width over height of the render target, for projection matrices. 1 while
-  // the window is minimized.
-  float aspect() const;
-
   // Seconds since the engine started.
   float time() const;
 

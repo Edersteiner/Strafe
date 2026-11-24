@@ -35,7 +35,6 @@ public:
   // Behind Engine.
   renderer::Renderer &renderer() { return renderer_; }
   input::InputManager &input() { return input_; }
-  float aspect() const;
   float time() const;
   void quit() { running_ = false; }
 
