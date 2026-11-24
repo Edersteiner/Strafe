@@ -2,6 +2,9 @@
 .xmake/
 build/
 
+# Python caches from running the codegen tool by hand
+__pycache__/
+
 # MacOS Cache
 .DS_Store
 

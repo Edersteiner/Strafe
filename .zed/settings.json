@@ -1,0 +1,8 @@
+// Project settings for Zed.
+{
+  // Every Lua file in this repository is an xmake script, so all of them use
+  // the xmake extension and its language server, not plain Lua.
+  "file_types": {
+    "xmake": ["**/*.lua"]
+  }
+}

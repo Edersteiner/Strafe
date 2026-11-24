@@ -10,7 +10,7 @@
 namespace strafe::scene {
 
 // An axis aligned box.
-struct Brush {
+struct [[reflect]] Brush {
   Vec3 min;
   Vec3 max;
   Vec4 color{1.0f};
@@ -19,12 +19,12 @@ struct Brush {
 };
 
 // A named transform for game code to use, such as a spawn point.
-struct Marker {
+struct [[reflect]] Marker {
   std::string name;
   Transform transform;
 };
 
-struct Object {
+struct [[reflect]] Object {
   std::string name;
   std::string model_path;
   Transform transform;
@@ -47,3 +47,5 @@ struct Scene {
 std::optional<Scene> loadScene(std::string_view path);
 
 } // namespace strafe::scene
+
+#include "strafe/scene/scene.gen.h"

@@ -8,7 +8,7 @@ namespace strafe::input {
 class InputManager;
 } // namespace strafe::input
 
-struct FlyCamera {
+struct [[reflect]] FlyCamera {
   strafe::Vec3 position;
   float yaw = 0.0f;
   float pitch = 0.0f;
@@ -23,3 +23,5 @@ struct FlyCamera {
   void update(const strafe::input::InputManager &input, uint8_t player, float delta_seconds, bool mouse_look);
   strafe::Quat rotation() const;
 };
+
+#include "fly_camera.gen.h"

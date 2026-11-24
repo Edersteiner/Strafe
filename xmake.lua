@@ -21,6 +21,7 @@ add_requires("imgui 1.92.9+b-docking", { configs = { sdl3 = true, volk = true } 
 add_requireconfs("imgui.libsdl3", { override = true, version = "3.4.16" })
 add_requireconfs("imgui.volk", { override = true, version = vulkan_sdk })
 
--- The engine library, then every app built on it.
+-- The codegen rule, the engine library library, then every app built on it.
+includes("Tools/codegen")
 includes("Engine")
 includes("Games/*/xmake.lua")

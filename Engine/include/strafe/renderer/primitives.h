@@ -6,7 +6,7 @@
 
 namespace strafe::renderer {
 
-enum class Primitive : uint8_t {
+enum class [[reflect]] Primitive : uint8_t {
   Cube,
   Sphere,
   Plane,
@@ -20,3 +20,5 @@ MeshData planeMeshData();
 MeshData primitiveMeshData(Primitive primitive);
 
 } // namespace strafe::renderer
+
+#include "strafe/renderer/primitives.gen.h"

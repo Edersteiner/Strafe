@@ -1,0 +1,6 @@
+# Matches the C++ column limit in .clang-format.
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]

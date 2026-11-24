@@ -1,0 +1,7 @@
+{
+  "include": ["Tools"],
+  "venvPath": "build/.codegen",
+  "venv": "venv",
+  "extraPaths": ["Tools/codegen"],
+  "pythonVersion": "3.10"
+}

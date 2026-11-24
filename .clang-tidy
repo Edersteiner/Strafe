@@ -26,7 +26,7 @@ Checks: >
 
 # Only report on engine code, never on xmake packages.
 HeaderFilterRegex: '(^|.*/)(include|src)/.*'
-ExcludeHeaderFilterRegex: '.*/\.xmake/.*'
+ExcludeHeaderFilterRegex: '.*/(\.xmake|\.gen)/.*'
 FormatStyle: file
 
 CheckOptions:

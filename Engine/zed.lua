@@ -1,3 +1,5 @@
+---@diagnostic disable: param-type-not-match, redundant-parameter, need-check-nil, undefined-field
+
 -- xmake zed
 --
 -- Writes .zed/tasks.json and .zed/debug.json with build, run and debug entries
@@ -15,7 +17,7 @@ task("zed")
       local xmake = os.programfile()
 
       local apps = { }
-      for name, target in pairs(project.targets()) do
+      for _, target in pairs(project.targets()) do
         if target:rule("strafe.app") then
           table.insert(apps, target)
         end

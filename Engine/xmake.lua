@@ -1,7 +1,10 @@
+---@diagnostic disable: param-type-not-match, redundant-parameter, need-check-nil, undefined-field
+
 -- The engine, linked statically into every app.
 target("Strafe")
     set_kind("static")
     set_languages("c++20", { public = true })
+    add_rules("strafe.codegen")
     add_files("src/**.cpp")
     add_includedirs("include", { public = true })
     -- Private headers such as core/glm_interop.h, for engine sources only.
@@ -35,6 +38,7 @@ target("Strafe")
 --   assets/          the app's assets
 -- The app's shaders/ and assets/ sit next to its xmake.lua and are optional.
 rule("strafe.app")
+    add_deps("strafe.codegen")
     on_load( function (target)
       target:set("kind", "binary")
       target:add("deps", "Strafe")
