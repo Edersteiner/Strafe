@@ -2,6 +2,7 @@
 
 #include "strafe/core/log.h"
 
+#include <cstdlib>
 #include <format>
 
 namespace strafe::gfx {
@@ -95,6 +96,11 @@ bool checkResult(VkResult result, std::string_view expression, std::source_locat
   const std::string_view name = resultString(result);
   const int value = result;
   log::detail::vwrite(level, location, "{} returned {} ({})", std::make_format_args(call, name, value));
+  // The device can never be used again, and carrying on only buries this
+  // error under the ones every later call returns.
+  if (result == VK_ERROR_DEVICE_LOST) {
+    std::abort();
+  }
   return !is_error;
 }
 
