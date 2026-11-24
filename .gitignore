@@ -16,3 +16,5 @@ compile_commands.json
 .zed/debug.json
 
 imgui.ini
+.cache/clangd/index/
+.ruff_cache/
