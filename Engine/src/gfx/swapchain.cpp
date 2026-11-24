@@ -63,6 +63,11 @@ bool Swapchain::recreate(VkExtent2D desired) {
 }
 
 bool Swapchain::createSwapchain(VkExtent2D desired, VkSwapchainKHR old_swapchain) {
+  const std::optional<VkPresentModeKHR> present_mode = choosePresentMode();
+  if (!present_mode) {
+    return false;
+  }
+
   VkSurfaceCapabilitiesKHR surface_caps{};
   if (!VK_CHECK(
           vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device_->physicalDevice(), device_->surface(), &surface_caps))) {
@@ -97,7 +102,7 @@ bool Swapchain::createSwapchain(VkExtent2D desired, VkSwapchainKHR old_swapchain
       .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
       .preTransform = surface_caps.currentTransform,
       .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-      .presentMode = VK_PRESENT_MODE_MAILBOX_KHR,
+      .presentMode = *present_mode,
       .oldSwapchain = old_swapchain};
 
   if (!VK_CHECK(vkCreateSwapchainKHR(device_->logicalDevice(), &swapchain_create_info, nullptr, &swapchain_handle_))) {
@@ -143,6 +148,23 @@ bool Swapchain::createSwapchain(VkExtent2D desired, VkSwapchainKHR old_swapchain
     }
   }
   return true;
+}
+
+std::optional<VkPresentModeKHR> Swapchain::choosePresentMode() const {
+  uint32_t count = 0;
+  if (!VK_CHECK(
+          vkGetPhysicalDeviceSurfacePresentModesKHR(device_->physicalDevice(), device_->surface(), &count, nullptr))) {
+    return std::nullopt;
+  }
+  std::vector<VkPresentModeKHR> modes(count);
+  if (!VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(
+          device_->physicalDevice(), device_->surface(), &count, modes.data()))) {
+    return std::nullopt;
+  }
+  // Mailbox keeps latency low without tearing. FIFO is the only mode every
+  // surface must support, so it is the fallback.
+  const bool has_mailbox = std::ranges::find(modes, VK_PRESENT_MODE_MAILBOX_KHR) != modes.end();
+  return has_mailbox ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
 }
 
 void Swapchain::destroyImageResources() {

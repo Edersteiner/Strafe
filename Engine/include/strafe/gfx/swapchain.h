@@ -3,6 +3,7 @@
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
+#include <optional>
 #include <vector>
 
 namespace strafe::gfx {
@@ -35,6 +36,7 @@ public:
 
 private:
   bool createSwapchain(VkExtent2D desired, VkSwapchainKHR old_swapchain);
+  std::optional<VkPresentModeKHR> choosePresentMode() const;
   void destroyImageResources();
   void destroySwapchain();
 
