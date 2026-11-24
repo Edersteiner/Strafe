@@ -12,6 +12,12 @@
 rule("strafe.codegen")
     on_load( function (target)
       target:add("includedirs", path.join(os.projectdir(), "build", ".gen", target:name(), "include"), { public = true })
+      -- The generated registration source includes the target's headers by
+      -- their path under src/, which apps otherwise only reach relatively.
+      local src = path.join(target:scriptdir(), "src")
+      if os.isdir(src) then
+        target:add("includedirs", src)
+      end
     end)
 
     -- Codegen runs at configure time rather than before_build, because xmake

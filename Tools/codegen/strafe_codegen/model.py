@@ -95,6 +95,7 @@ class Enum:
 @dataclass
 class Header:
     path: str  # Relative to the project root.
+    source_include_path: str  # How the header itself is included.
     include_path: str  # How the header's generated companion is included.
     text: str
     records: list[Record] = field(default_factory=list)

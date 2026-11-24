@@ -19,6 +19,7 @@ def generate(module: Module, output: Output, diagnostics: Diagnostics) -> None:
             if _is_reflected(record):
                 if _validate(record, diagnostics):
                     sections.append(_record(record))
+                    output.register(header, f"registry.add<::{record.qualified_name}>();")
             else:
                 for field in record.fields:
                     for attribute in field.attributes:
@@ -30,6 +31,7 @@ def generate(module: Module, output: Output, diagnostics: Diagnostics) -> None:
         for enum in header.enums:
             if _is_reflected(enum):
                 sections.append(_enum(enum))
+                output.register(header, f"registry.add<::{enum.qualified_name}>();")
         if sections:
             body = "\n\n".join(sections)
             output.section(

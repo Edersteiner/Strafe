@@ -8,6 +8,10 @@ namespace input {
 class InputManager;
 } // namespace input
 
+namespace reflect {
+class TypeRegistry;
+} // namespace reflect
+
 namespace renderer {
 class Renderer;
 } // namespace renderer
@@ -20,6 +24,8 @@ public:
 
   renderer::Renderer &renderer();
   input::InputManager &input();
+  // Every [[reflect]] type of the engine and the app, by name or id.
+  const reflect::TypeRegistry &types() const;
 
   // Seconds since the engine started.
   float time() const;

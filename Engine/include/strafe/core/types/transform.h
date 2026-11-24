@@ -7,7 +7,7 @@
 namespace strafe {
 
 // Position, rotation and scale.
-struct Transform {
+struct [[reflect]] Transform {
   Vec3 position;
   Quat rotation;
   Vec3 scale{1.0f};
@@ -17,3 +17,5 @@ struct Transform {
 };
 
 } // namespace strafe
+
+#include "strafe/core/types/transform.gen.h"

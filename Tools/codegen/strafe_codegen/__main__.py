@@ -31,6 +31,7 @@ class _Arguments:
     roots: list[Path]
     generators: list[Path]
     inputs: Path
+    register_function: str
 
 
 def main() -> int:
@@ -45,18 +46,23 @@ def main() -> int:
     headers: list[Header] = []
     for path in sorted(set(paths), key=lambda p: _relative(p, project)):
         text = path.read_text("utf-8")
-        include_path = _companion_path(path, roots)
+        source_include_path, include_path = _include_paths(path, roots)
         # Attributes are the only way in, so a header with neither attributes nor
         # a companion include is skipped unparsed.
         if "[[" not in text and include_path not in text:
             continue
-        header = Header(path=_relative(path, project), include_path=include_path, text=text)
+        header = Header(
+            path=_relative(path, project),
+            source_include_path=source_include_path,
+            include_path=include_path,
+            text=text,
+        )
         diagnostics.add_source(header.path, text)
         parse_header(header, known_attributes, diagnostics)
         headers.append(header)
 
     module = Module(target=arguments.target, headers=headers)
-    output = Output()
+    output = Output(arguments.target, arguments.register_function)
     for plugin in plugins:
         plugin.generate(module, output, diagnostics)
     for header in output.headers_with_companions():
@@ -77,10 +83,13 @@ def _arguments() -> _Arguments:
     parser = argparse.ArgumentParser(prog="strafe_codegen")
     _ = parser.add_argument("--project", type=Path, required=True, help="the project root, for relative paths")
     _ = parser.add_argument("--target", required=True, help="the build target's name")
-    _ = parser.add_argument("--out", type=Path, required=True, help="where generated headers go")
+    _ = parser.add_argument("--out", type=Path, required=True, help="the target's generated folder")
     _ = parser.add_argument("--root", type=Path, action="append", default=[], help="an include root of the target")
     _ = parser.add_argument("--generators", type=Path, action="append", default=[], help="a folder of extra generators")
     _ = parser.add_argument("--inputs", type=Path, required=True, help="a file listing the headers to read")
+    _ = parser.add_argument(
+        "--register-function", required=True, help="the name of the target's generated registration function"
+    )
     # argparse only knows Any, so the values are typed once here.
     values = cast(dict[str, object], vars(parser.parse_args()))
     return _Arguments(
@@ -90,6 +99,7 @@ def _arguments() -> _Arguments:
         roots=cast(list[Path], values["root"]),
         generators=cast(list[Path], values["generators"]),
         inputs=cast(Path, values["inputs"]),
+        register_function=cast(str, values["register_function"]),
     )
 
 
@@ -100,14 +110,9 @@ def _relative(path: Path, project: Path) -> str:
         return path.as_posix()
 
 
-def _companion_path(path: Path, roots: list[Path]) -> str:
-    """The generated header mirrors the header's path under its include root, so
-    it is included the same way: strafe/scene/scene.h has strafe/scene/scene.gen.h."""
-    for root in roots:
-        if path.is_relative_to(root):
-            relative = path.relative_to(root)
-            return relative.with_name(f"{path.stem}.gen.h").as_posix()
-    return f"{path.stem}.gen.h"
+def _include_paths(path: Path, roots: list[Path]) -> tuple[str, str]:
+    relative = next((path.relative_to(root) for root in roots if path.is_relative_to(root)), Path(path.name))
+    return relative.as_posix(), relative.with_name(f"{path.stem}.gen.h").as_posix()
 
 
 def _find_companion_include(header: Header) -> re.Match[str] | None:

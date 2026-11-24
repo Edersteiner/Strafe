@@ -15,6 +15,10 @@ namespace strafe {
 bool Application::initialize(const AppConfig &config) {
   start_ticks_ns_ = SDL_GetTicksNS();
 
+  if (!registerTypes()) {
+    return false;
+  }
+
   if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
     log::error("Failed to initialise SDL Subsystems: {}", SDL_GetError());
     return false;
@@ -46,6 +50,19 @@ bool Application::initialize(const AppConfig &config) {
     log::error("The app failed to initialize");
     return false;
   }
+  return true;
+}
+
+bool Application::registerTypes() {
+  types_.addBuiltins();
+  // The engine's first, so a game type that clashes with one is the one reported.
+  generated::registerEngineTypes(types_);
+  generated::registerAppTypes(types_);
+  if (types_.failed()) {
+    log::error("Failed to register reflected types");
+    return false;
+  }
+  log::debug("Registered {} types", types_.types().size());
   return true;
 }
 
@@ -172,6 +189,7 @@ float Application::time() const { return static_cast<float>(SDL_GetTicksNS() - s
 
 renderer::Renderer &Engine::renderer() { return application_->renderer(); }
 input::InputManager &Engine::input() { return application_->input(); }
+const reflect::TypeRegistry &Engine::types() const { return application_->types(); }
 float Engine::time() const { return application_->time(); }
 void Engine::quit() { application_->quit(); }
 

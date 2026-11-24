@@ -1,6 +1,7 @@
 #pragma once
 
 #include "strafe/app.h"
+#include "strafe/core/type_registry.h"
 #include "strafe/engine.h"
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
@@ -35,10 +36,12 @@ public:
   // Behind Engine.
   renderer::Renderer &renderer() { return renderer_; }
   input::InputManager &input() { return input_; }
+  const reflect::TypeRegistry &types() const { return types_; }
   float time() const;
   void quit() { running_ = false; }
 
 private:
+  bool registerTypes();
   bool initializeVulkan();
   void render();
 
@@ -48,6 +51,8 @@ private:
   bool app_initialized_ = false;
   bool running_ = false;
   uint64_t start_ticks_ns_ = 0;
+
+  reflect::TypeRegistry types_;
 
   SDL_Window *window_ = nullptr;
   int width_ = 0, height_ = 0;
