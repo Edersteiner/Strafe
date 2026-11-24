@@ -5,10 +5,9 @@
 #include "strafe/input/input_manager.h"
 #include "strafe/renderer/camera.h"
 #include "strafe/renderer/frame_desc.h"
+#include "strafe/renderer/primitives.h"
 #include "strafe/renderer/renderer.h"
 
-#include <array>
-#include <cstdint>
 #include <optional>
 
 using namespace strafe;
@@ -18,37 +17,6 @@ namespace {
 constexpr Vec3 kCameraPosition(0.0f, 1.5f, 4.0f);
 constexpr float kSpinSpeed = 0.8f; // Radians per second.
 
-// A unit cube centred on the origin, with one flat-shaded quad per face.
-renderer::MeshData cubeMeshData() {
-  struct Face {
-    Vec3 normal, u, v; // u x v == normal, so the corners wind CCW.
-  };
-  constexpr std::array<Face, 6> kFaces{{
-      {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
-      {{-1, 0, 0}, {0, 0, 1}, {0, 1, 0}},
-      {{0, 1, 0}, {0, 0, 1}, {1, 0, 0}},
-      {{0, -1, 0}, {1, 0, 0}, {0, 0, 1}},
-      {{0, 0, 1}, {1, 0, 0}, {0, 1, 0}},
-      {{0, 0, -1}, {0, 1, 0}, {1, 0, 0}},
-  }};
-  constexpr std::array<Vec2, 4> kCorners{{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}};
-
-  renderer::MeshData mesh;
-  for (const Face &face : kFaces) {
-    const auto first = static_cast<uint32_t>(mesh.vertices.size());
-    for (const Vec2 corner : kCorners) {
-      mesh.vertices.push_back(
-          {.position = 0.5f * (face.normal + corner.x * face.u + corner.y * face.v),
-           .uv = 0.5f * (corner + Vec2(1.0f)),
-           .normal = face.normal});
-    }
-    for (const uint32_t i : {0u, 1u, 2u, 0u, 2u, 3u}) {
-      mesh.indices.push_back(first + i);
-    }
-  }
-  return mesh;
-}
-
 } // namespace
 
 bool AppTemplateName::onInit(Engine &engine) {
@@ -57,19 +25,16 @@ bool AppTemplateName::onInit(Engine &engine) {
 
   renderer::Renderer &renderer = engine.renderer();
 
-  const renderer::MeshData cube = cubeMeshData();
-  const std::optional<renderer::MeshId> mesh = renderer.createMesh(cube.vertices, cube.indices);
   // "lit" is one of the engine's shaders. An app shader with the same name in
   // shaders/ would replace it.
   const std::optional<gfx::ShaderId> lit = renderer.loadShader("lit");
-  if (!mesh || !lit) {
+  if (!lit) {
     return false;
   }
   const std::optional<renderer::MaterialId> material = renderer.createMaterial(*lit);
   if (!material) {
     return false;
   }
-  cube_ = *mesh;
   material_ = *material;
 
   // Fields of LitParams in lit.slang, by name. "albedo" is left unset, so it
@@ -85,12 +50,14 @@ void AppTemplateName::onUpdate(Engine &engine, float delta_seconds) {
   angle_ += kSpinSpeed * delta_seconds;
 }
 
-void AppTemplateName::onRender(Engine & /* engine */, renderer::FrameDesc &frame) {
+void AppTemplateName::onRender(Engine &engine, renderer::FrameDesc &frame) {
   frame.camera.transform.position = kCameraPosition;
   frame.camera.lookAt(Vec3());
   frame.camera.projection = renderer::Perspective{.fov_y = radians(60.0f), .far_plane = 100.0f};
 
   const Vec3 axis(0.3f, 1.0f, 0.2f);
   frame.draws.push_back(
-      {.mesh = cube_, .material = material_, .transform = {.rotation = Quat::fromAxisAngle(axis, angle_)}});
+      {.mesh = engine.renderer().primitive(renderer::Primitive::Cube),
+       .material = material_,
+       .transform = {.rotation = Quat::fromAxisAngle(axis, angle_)}});
 }

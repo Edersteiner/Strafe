@@ -2,7 +2,6 @@
 
 #include "strafe/app.h"
 #include "strafe/renderer/material.h"
-#include "strafe/renderer/mesh.h"
 
 // Made by `xmake new-app`. Draws a spinning lit cube to show the app is wired
 // up. Replace it with your own scene.
@@ -17,7 +16,6 @@ public:
   void onRender(strafe::Engine &engine, strafe::renderer::FrameDesc &frame) override;
 
 private:
-  strafe::renderer::MeshId cube_;
   strafe::renderer::MaterialId material_;
   float angle_ = 0.0f;
 };
