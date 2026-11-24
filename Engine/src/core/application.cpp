@@ -132,7 +132,6 @@ void Application::render() {
 
   ui::beginRenderImgui(input_.isRelativeMouseMode());
 
-  ImGui::ShowDemoWindow();
   app_.onRender(engine_, frame_desc_);
 
   ui::endRenderImgui();
