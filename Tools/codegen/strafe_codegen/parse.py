@@ -32,6 +32,12 @@ _DECLARATOR_WRAPPERS = {
 # `enum class [[reflect]] Mode`. They are found by this pattern instead, then
 # blanked out so the enum parses and every line and column stays put.
 _ENUM_ATTRIBUTES = re.compile(rb"\benum\b(?:\s+(?:class|struct)\b)?\s*((?:\[\[.*?\]\]\s*)+)", re.DOTALL)
+# Attributes after an enumerator's name, as in `Count [[skip]]`, don't parse
+# either. They are cut out the same way, inside every enum body these find.
+_ENUM_HEAD = re.compile(
+    rb"\benum\b(?:\s+(?:class|struct)\b)?(?:\s*\[\[.*?\]\])*\s*[A-Za-z_]\w*\s*(?::[^{;]*)?\{", re.DOTALL
+)
+_ENUMERATOR_ATTRIBUTES = re.compile(rb"([A-Za-z_]\w*)\s*((?:\[\[.*?\]\]\s*)+)", re.DOTALL)
 
 # Attributes the standard defines. Any other attribute without a namespace is
 # either ours or a typo of ours.
@@ -63,6 +69,7 @@ class _Context:
     diagnostics: Diagnostics
     known_attributes: frozenset[str]
     enum_attributes: dict[int, list[Attribute]]  # By the byte offset of the `enum` keyword.
+    enumerator_attributes: dict[int, list[Attribute]]  # By the byte offset of the enumerator's name.
     consumed: set[int]  # node_ids of our attributes that landed on something modelled.
 
     def location(self, node: tree_sitter.Node) -> Location:
@@ -83,19 +90,44 @@ def parse_header(header: Header, known_attributes: frozenset[str], diagnostics: 
     our attributes, on itself or on a field."""
     source = header.text.encode("utf-8")
     enum_attributes: dict[int, list[Attribute]] = {}
+    enumerator_attributes: dict[int, list[Attribute]] = {}
     blanked = bytearray(source)
-    for match in _ENUM_ATTRIBUTES.finditer(source):
-        start, end = match.span(1)
-        attributes = _parse_detached_attributes(source[start:end], start, header, source)
-        enum_attributes[match.start()] = attributes
+
+    def blank(start: int, end: int) -> None:
         for i in range(start, end):
             if blanked[i] not in b"\r\n":
                 blanked[i] = ord(" ")
 
+    for match in _ENUM_ATTRIBUTES.finditer(source):
+        start, end = match.span(1)
+        enum_attributes[match.start()] = _parse_detached_attributes(source[start:end], start, header, source)
+        blank(start, end)
+    for head in _ENUM_HEAD.finditer(source):
+        body_start = head.end()
+        body_end = _closing_brace(source, body_start)
+        for match in _ENUMERATOR_ATTRIBUTES.finditer(source, body_start, body_end):
+            start, end = match.span(2)
+            enumerator_attributes[match.start(1)] = _parse_detached_attributes(source[start:end], start, header, source)
+            blank(start, end)
+
     tree = _parser().parse(bytes(blanked))
-    context = _Context(header, source, diagnostics, known_attributes, enum_attributes, set())
+    context = _Context(header, source, diagnostics, known_attributes, enum_attributes, enumerator_attributes, set())
     _walk(context, tree.root_node, [], is_template=False)
     _check_attributes(context, tree.root_node)
+
+
+def _closing_brace(source: bytes, start: int) -> int:
+    """The offset of the brace closing the one just before start, or the end of
+    the source."""
+    depth = 1
+    for i in range(start, len(source)):
+        if source[i] == ord("{"):
+            depth += 1
+        elif source[i] == ord("}"):
+            depth -= 1
+            if depth == 0:
+                return i
+    return len(source)
 
 
 def _parse_detached_attributes(text: bytes, offset: int, header: Header, source: bytes) -> list[Attribute]:
@@ -104,8 +136,8 @@ def _parse_detached_attributes(text: bytes, offset: int, header: Header, source:
     snippet = prefix + text + b" X {};"
     tree = _parser().parse(snippet)
     # Text comes from the snippet, locations from the real header.
-    snippet_context = _Context(header, snippet, Diagnostics(), frozenset(), {}, set())
-    header_context = _Context(header, source, Diagnostics(), frozenset(), {}, set())
+    snippet_context = _Context(header, snippet, Diagnostics(), frozenset(), {}, {}, set())
+    header_context = _Context(header, source, Diagnostics(), frozenset(), {}, {}, set())
     attributes: list[Attribute] = []
     for node in _descendants(tree.root_node, "attribute"):
         real_offset = offset + node.start_byte - len(prefix)
@@ -250,18 +282,27 @@ def _enum(
     context: _Context, node: tree_sitter.Node, name_node: tree_sitter.Node, body: tree_sitter.Node, scope: list[str]
 ) -> None:
     attributes = context.enum_attributes.get(node.start_byte, [])
-    if not attributes:
-        return
     is_scoped = any(c.type in ("class", "struct") for c in node.children)
     underlying = node.child_by_field_name("base")
-    enumerators = [
-        Enumerator(
-            name=context.text(e.child_by_field_name("name")),
-            value=context.text(e.child_by_field_name("value")) or None,
+    enumerators: list[Enumerator] = []
+    for node in body.named_children:
+        name = node.child_by_field_name("name")
+        if node.type != "enumerator" or name is None:
+            continue
+        enumerators.append(
+            Enumerator(
+                name=context.text(name),
+                value=context.text(node.child_by_field_name("value")) or None,
+                attributes=[
+                    a
+                    for a in context.enumerator_attributes.get(name.start_byte, [])
+                    if a.namespace is None and a.name in context.known_attributes
+                ],
+                location=context.location(name),
+            )
         )
-        for e in body.named_children
-        if e.type == "enumerator"
-    ]
+    if not attributes and not any(e.attributes for e in enumerators):
+        return
     context.header.enums.append(
         Enum(
             name=context.text(name_node),
@@ -275,6 +316,8 @@ def _enum(
         )
     )
     _consume(context, attributes)
+    for enumerator in enumerators:
+        _consume(context, enumerator.attributes)
 
 
 def _own_attributes(context: _Context, node: tree_sitter.Node) -> list[Attribute]:
@@ -321,7 +364,7 @@ def _check_attributes(context: _Context, root: tree_sitter.Node) -> None:
         _attribute(context, node, context.location(node), node_id=node.start_byte)
         for node in _descendants(root, "attribute")
     ]
-    for attributes in context.enum_attributes.values():
+    for attributes in [*context.enum_attributes.values(), *context.enumerator_attributes.values()]:
         found.extend(attributes)
 
     for attribute in found:

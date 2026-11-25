@@ -99,6 +99,8 @@ struct TypeDesc {
   TypeKind kind = TypeKind::Builtin;
   size_t size = 0;
   size_t alignment = 0;
+  // Empty unless the type is [[file]].
+  std::string_view file_extension;
   std::vector<FieldDesc> fields;
   std::vector<EnumeratorDesc> enumerators;
 
@@ -161,6 +163,9 @@ void TypeRegistry::add() {
   if constexpr (ReflectedRecord<T>) {
     desc.name = TypeInfo<T>::name;
     desc.kind = TypeKind::Record;
+    if constexpr (FileType<T>) {
+      desc.file_extension = TypeInfo<T>::file_extension;
+    }
     [&]<size_t... Indices>(std::index_sequence<Indices...>) {
       (desc.fields.push_back(fieldDesc<T, Indices>()), ...);
     }(std::make_index_sequence<fieldCount<T>()>());

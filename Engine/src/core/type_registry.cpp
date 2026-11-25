@@ -52,6 +52,14 @@ void TypeRegistry::insert(TypeDesc desc) {
     failed_ = true;
     return;
   }
+  if (!desc.file_extension.empty()) {
+    const auto clash = std::ranges::find(types_, desc.file_extension, &TypeDesc::file_extension);
+    if (clash != types_.end()) {
+      log::error("Types '{}' and '{}' both use the file extension '.{}'", clash->name, desc.name, desc.file_extension);
+      failed_ = true;
+      return;
+    }
+  }
   const TypeDesc &stored = types_.emplace_back(std::move(desc));
   by_name_.emplace(std::string(stored.name), &stored);
   by_id_.emplace(stored.id.value, &stored);

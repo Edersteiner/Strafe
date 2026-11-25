@@ -56,6 +56,8 @@ class Field:
 class Enumerator:
     name: str
     value: str | None  # Source text of an explicit value.
+    attributes: list[Attribute]
+    location: Location
 
 
 @dataclass

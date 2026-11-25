@@ -84,6 +84,9 @@ function main(target)
   for _, file in ipairs(table.join(headers, tool_files)) do
     table.insert(fingerprint, file .. "=" .. hash.xxhash128(file))
   end
+  -- Reruns once a checkout gains Zed settings, so they get the file types.
+  local zed_dir = path.join(os.projectdir(), ".zed")
+  table.insert(fingerprint, "zed=" .. tostring(os.isdir(zed_dir)))
 
   -- Attributes are standard C++ the compilers don't recognize. GCC can only
   -- silence unscoped attributes all at once.
@@ -103,6 +106,11 @@ function main(target)
     for _, root in ipairs(roots) do
       table.insert(arguments, "--root")
       table.insert(arguments, root)
+    end
+    -- Only in a checkout set up for Zed, which has its project settings folder.
+    if os.isdir(zed_dir) then
+      table.insert(arguments, "--zed-settings")
+      table.insert(arguments, path.join(zed_dir, "settings.json"))
     end
     os.execv(python, arguments, { envs = { PYTHONPATH = tool_dir(), PYTHONDONTWRITEBYTECODE = "1" } })
   end, {

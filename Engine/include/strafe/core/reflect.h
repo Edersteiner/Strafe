@@ -1,6 +1,6 @@
 #pragma once
 
-#include <array> // IWYU pragma: keep, for the enum tables in generated headers.
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <string_view>
@@ -21,6 +21,10 @@ concept ReflectedRecord = Reflected<T> && requires { TypeInfo<T>::fields; };
 
 template <typename T>
 concept ReflectedEnum = Reflected<T> && std::is_enum_v<T> && requires { TypeInfo<T>::enumerators; };
+
+// A [[file]] record, saved on its own with TypeInfo<T>::file_extension.
+template <typename T>
+concept FileType = ReflectedRecord<T> && requires { TypeInfo<T>::file_extension; };
 
 template <typename Class, typename Member> struct Field {
   using ClassType = Class;
@@ -49,6 +53,12 @@ template <ReflectedRecord T> constexpr std::size_t fieldCount() {
   return std::tuple_size_v<std::remove_const_t<decltype(TypeInfo<T>::fields)>>;
 }
 
+template <ReflectedRecord T> constexpr auto fieldNames() {
+  return std::apply(
+      [](const auto &...fields) { return std::array<std::string_view, sizeof...(fields)>{fields.name...}; },
+      TypeInfo<T>::fields);
+}
+
 // Calls visitor once per field in declaration order, with a Field<T, Member>.
 template <ReflectedRecord T, typename Visitor> constexpr void forEachField(Visitor &&visitor) {
   std::apply([&](const auto &...fields) { (visitor(fields), ...); }, TypeInfo<T>::fields);
@@ -61,6 +71,14 @@ template <ReflectedEnum Enum> constexpr std::optional<std::string_view> enumName
     }
   }
   return std::nullopt;
+}
+
+template <ReflectedEnum Enum> constexpr auto enumNames() {
+  std::array<std::string_view, TypeInfo<Enum>::enumerators.size()> names{};
+  for (std::size_t i = 0; i < names.size(); ++i) {
+    names[i] = TypeInfo<Enum>::enumerators[i].name;
+  }
+  return names;
 }
 
 template <ReflectedEnum Enum> constexpr std::optional<Enum> enumFromName(std::string_view name) {

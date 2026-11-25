@@ -2,6 +2,7 @@
 
     python -m strafe_codegen --project DIR --target NAME --out DIR
         [--root DIR ...] [--generators DIR ...] --inputs FILE
+        --register-function NAME [--zed-settings FILE]
 
 --inputs names a file listing one header path per line, which keeps long
 header lists off the command line.
@@ -16,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from . import generators
+from . import generators, zed
 from .diagnostics import Diagnostics, note
 from .model import Header, Location, Module
 from .output import Output, write
@@ -32,6 +33,7 @@ class _Arguments:
     generators: list[Path]
     inputs: Path
     register_function: str
+    zed_settings: Path | None
 
 
 def main() -> int:
@@ -73,9 +75,13 @@ def main() -> int:
     diagnostics.flush()
     if diagnostics.errors:
         return 1
-    changes = write(arguments.out.resolve(), output.render())
+    out = arguments.out.resolve()
+    changes = write(out, output.render())
     if changes:
         print(f"[codegen] {arguments.target}: {changes} generated file(s) updated")
+    # Every target's folder sits next to this one, so the settings cover them all.
+    if arguments.zed_settings is not None and zed.update_file_types(arguments.zed_settings, out.parent):
+        print(f"[codegen] {arguments.target}: updated the file types in {arguments.zed_settings.name}")
     return 0
 
 
@@ -90,6 +96,9 @@ def _arguments() -> _Arguments:
     _ = parser.add_argument(
         "--register-function", required=True, help="the name of the target's generated registration function"
     )
+    _ = parser.add_argument(
+        "--zed-settings", type=Path, default=None, help="Zed project settings to point at the [[file]] types"
+    )
     # argparse only knows Any, so the values are typed once here.
     values = cast(dict[str, object], vars(parser.parse_args()))
     return _Arguments(
@@ -100,6 +109,7 @@ def _arguments() -> _Arguments:
         generators=cast(list[Path], values["generators"]),
         inputs=cast(Path, values["inputs"]),
         register_function=cast(str, values["register_function"]),
+        zed_settings=cast(Path | None, values["zed_settings"]),
     )
 
 

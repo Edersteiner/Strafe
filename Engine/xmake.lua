@@ -13,7 +13,7 @@ target("Strafe")
     -- Public because engine headers include them, so apps need them too.
     add_packages("vulkan-headers", "volk", "vulkan-memory-allocator", "libsdl3", "imgui", { public = true })
     -- Only used inside the engine's own source files.
-    add_packages("glm", "slang", "stb", "tinyobjloader")
+    add_packages("glm", "slang", "stb", "tinyobjloader", "yyjson")
 
     -- Public, so apps see the same Vulkan declarations as the engine.
     -- volk loads the Vulkan loader at runtime, so nothing links against it.

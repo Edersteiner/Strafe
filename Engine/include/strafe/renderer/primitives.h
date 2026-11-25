@@ -10,7 +10,7 @@ enum class [[reflect]] Primitive : uint8_t {
   Cube,
   Sphere,
   Plane,
-  Count,
+  Count [[skip]],
 };
 
 MeshData cubeMeshData();
