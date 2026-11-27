@@ -1,5 +1,6 @@
 #include "application.h"
 
+#include "strafe/console.h"
 #include "strafe/core/log.h"
 #include "strafe/gfx/vk_check.h"
 #include "strafe/input.h"
@@ -15,8 +16,9 @@ namespace strafe {
 
 bool Application::initialize(const AppConfig &config) {
   start_ticks_ns_ = SDL_GetTicksNS();
+  console_.initialize(input_);
 
-  if (!registerTypes()) {
+  if (!registerGenerated()) {
     return false;
   }
 
@@ -47,6 +49,8 @@ bool Application::initialize(const AppConfig &config) {
   ui::initializeImgui(*this);
 
   bindFacades();
+  // Before onInit, so the game can change the engine's actions there.
+  Input::bind(input::kToggleConsole, {input::Key::Grave});
   app_initialized_ = true;
   if (!app_.onInit()) {
     log::error("The app failed to initialize");
@@ -55,7 +59,7 @@ bool Application::initialize(const AppConfig &config) {
   return true;
 }
 
-bool Application::registerTypes() {
+bool Application::registerGenerated() {
   types_.addBuiltins();
   // The engine's first, so a game type that clashes with one is the one reported.
   generated::registerEngineTypes(types_);
@@ -65,16 +69,22 @@ bool Application::registerTypes() {
     return false;
   }
   log::debug("Registered {} types", types_.types().size());
+
+  console_.commands().setApp(app_);
+  generated::registerEngineCommands(console_.commands());
+  generated::registerAppCommands(console_.commands());
   return true;
 }
 
 void Application::bindFacades() {
+  Console::manager_ = &console_;
   Engine::application_ = this;
   Input::manager_ = &input_;
   Renderer::renderer_ = &renderer_;
 }
 
 void Application::unbindFacades() {
+  Console::manager_ = nullptr;
   Engine::application_ = nullptr;
   Input::manager_ = nullptr;
   Renderer::renderer_ = nullptr;
@@ -117,15 +127,17 @@ void Application::run() {
         swapchain_.markForRecreate();
         continue;
       }
-      if (!ui::processImguiEvent(event)) {
-        input_.handleEvents(event);
-      }
+      dispatchEvent(event);
     }
     if (!running_) {
       break;
     }
     input_.update();
+    if (input_.isEngineActionJustPressed(input::kToggleConsole)) {
+      console_.setOpen(!console_.isOpen());
+    }
     renderer_.beginFrame(time());
+    console_.update();
 
     const uint64_t now_ns = SDL_GetTicksNS();
     const float delta_seconds = static_cast<float>(now_ns - last_ticks_ns) / 1'000'000'000.0f;
@@ -133,6 +145,24 @@ void Application::run() {
     app_.onUpdate(delta_seconds);
 
     render();
+  }
+}
+
+void Application::dispatchEvent(const SDL_Event &event) {
+  // The console's own input field must not swallow the key that closes it. In
+  // any other field, that key types as usual.
+  if ((console_.isOpen() || !ui::wantsText()) && input_.pressesEngineAction(event)) {
+    drop_text_ = true;
+    input_.handleEvents(event);
+    return;
+  }
+  if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP) {
+    drop_text_ = false;
+  } else if (event.type == SDL_EVENT_TEXT_INPUT && drop_text_) {
+    return;
+  }
+  if (!ui::processImguiEvent(event)) {
+    input_.handleEvents(event);
   }
 }
 
@@ -152,9 +182,10 @@ void Application::render() {
     return;
   }
 
-  ui::beginRenderImgui(Input::isRelativeMouseMode());
+  ui::beginRenderImgui(input_.isMouseCaptured());
 
   app_.onRender();
+  console_.draw();
 
   ui::endRenderImgui();
 
@@ -187,6 +218,7 @@ void Application::shutdown() {
     window_ = nullptr;
   }
   SDL_Quit();
+  console_.shutdown();
 }
 
 float Application::time() const { return static_cast<float>(SDL_GetTicksNS() - start_ticks_ns_) / 1'000'000'000.0f; }

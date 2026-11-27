@@ -1,10 +1,12 @@
 """Generator plugins.
 
-A generator is a module with three names:
+A generator is a module with four names:
 
     NAME        a short identifier, used in messages
-    ATTRIBUTES  the attribute names it reads, so the parser keeps them and
-                doesn't report them as unknown
+    ATTRIBUTES  the attribute names it reads on types and their members, so the
+                parser keeps them and doesn't report them as unknown
+    FUNCTION_ATTRIBUTES
+                the same for functions
     generate(module, output, diagnostics)
                 reads the model and adds sections and files to output
 
@@ -21,7 +23,7 @@ from typing import Protocol, cast
 from ..diagnostics import Diagnostics
 from ..model import Module
 from ..output import Output
-from . import reflect
+from . import console, reflect
 
 
 class Generator(Protocol):
@@ -30,11 +32,13 @@ class Generator(Protocol):
     def NAME(self) -> str: ...
     @property
     def ATTRIBUTES(self) -> frozenset[str]: ...
+    @property
+    def FUNCTION_ATTRIBUTES(self) -> frozenset[str]: ...
 
     def generate(self, module: Module, output: Output, diagnostics: Diagnostics) -> None: ...
 
 
-BUILTIN: list[Generator] = [reflect]
+BUILTIN: list[Generator] = [reflect, console]
 
 
 def load(extra_folders: list[Path]) -> list[Generator]:
@@ -48,7 +52,7 @@ def load(extra_folders: list[Path]) -> list[Generator]:
                 raise RuntimeError(f"Can't load generator {path}")
             plugin = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(plugin)
-            for name in ("NAME", "ATTRIBUTES", "generate"):
+            for name in ("NAME", "ATTRIBUTES", "FUNCTION_ATTRIBUTES", "generate"):
                 if not hasattr(plugin, name):
                     raise RuntimeError(f"Generator {path} has no {name}")
             generators.append(cast(Generator, cast(object, plugin)))

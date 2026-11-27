@@ -94,6 +94,30 @@ class Enum:
         return "::".join([*self.scope, self.name])
 
 
+@dataclass(frozen=True)
+class Parameter:
+    name: str | None  # None when the declaration leaves it out.
+    has_default: bool
+
+
+@dataclass
+class Function:
+    name: str
+    scope: list[str]  # Enclosing namespaces and classes, outermost first.
+    attributes: list[Attribute]
+    parameters: list[Parameter]
+    help: str  # The comment directly above, as one line.
+    location: Location
+    access: str  # "public" outside a class.
+    is_member: bool  # A member that needs an object.
+    class_has_base: bool  # Whether that member's class derives from another.
+    is_template: bool = False
+
+    @property
+    def qualified_name(self) -> str:
+        return "::".join([*self.scope, self.name])
+
+
 @dataclass
 class Header:
     path: str  # Relative to the project root.
@@ -102,9 +126,19 @@ class Header:
     text: str
     records: list[Record] = field(default_factory=list)
     enums: list[Enum] = field(default_factory=list)
+    functions: list[Function] = field(default_factory=list)
 
-    def has_attribute(self, name: str) -> bool:
-        return any(any(a.name == name for a in item.attributes) for item in [*self.records, *self.enums])
+
+@dataclass(frozen=True)
+class KnownAttributes:
+    """The names the generators read, by what they can stand on."""
+
+    types: frozenset[str]  # Records, enums, fields and enumerators.
+    functions: frozenset[str]
+
+    @property
+    def all(self) -> frozenset[str]:
+        return self.types | self.functions
 
 
 @dataclass

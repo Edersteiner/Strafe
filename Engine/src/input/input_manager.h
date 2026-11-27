@@ -19,12 +19,6 @@ struct SDL_Window;
 
 namespace strafe::input {
 
-struct InputBinding {
-  InputSource source;
-  // Which half of an axis counts. Keys and buttons ignore it.
-  AxisDirection axis_direction = AxisDirection::Positive;
-};
-
 struct InputAction {
   struct PlayerState {
     // 0 to 1, the strongest of the player's bindings.
@@ -52,6 +46,17 @@ public:
   void beginFrame();
   void handleEvents(const SDL_Event &event);
   void update();
+
+  // While blocked, every action but the engine's reads as released and the
+  // mouse is free. Inputs still held when it ends don't count as new presses.
+  void setBlocked(bool blocked);
+  // Whether the window is in relative mouse mode right now.
+  bool isMouseCaptured() const;
+
+  // Whether the event presses something bound to an engine action.
+  bool pressesEngineAction(const SDL_Event &event) const;
+  // False for an action the game removed.
+  bool isEngineActionJustPressed(std::string_view action_name) const;
 
 private:
   friend class strafe::Input;
@@ -85,6 +90,10 @@ private:
   void addGamepad(uint32_t id);
   void removeGamepad(uint32_t id);
   void assignDevices();
+  void applyMouseMode();
+  bool isActive(std::string_view action_name) const;
+  // Takes the current inputs as the previous ones, so no edges fire for them.
+  void rebaseline(std::string_view action_name, InputAction &action) const;
   float readBinding(const InputBinding &binding, uint8_t player) const;
   float readAction(const InputAction &action, uint8_t player) const;
   const InputAction *findAction(std::string_view action_name) const;
@@ -92,6 +101,8 @@ private:
   bool anyPlayer(std::string_view action_name, uint8_t player_id, Predicate predicate) const;
 
   SDL_Window *window_ = nullptr;
+  bool blocked_ = false;
+  bool wants_relative_mouse_ = false;
   std::unordered_map<std::string, InputAction, NameHash, std::equal_to<>> actions_;
   mutable std::unordered_set<std::string, NameHash, std::equal_to<>> warned_names_;
   uint8_t player_count_ = 1;

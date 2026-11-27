@@ -1,5 +1,7 @@
 #pragma once
 
+#include "strafe/core/reflect.h"
+
 #include <atomic>
 #include <concepts>
 #include <cstdint>
@@ -11,7 +13,7 @@
 
 namespace strafe::log {
 
-enum class Level : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
+enum class [[reflect]] Level : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
 
 // Calls below this level compile to nothing.
 #ifdef STRAFE_DEBUG
@@ -22,6 +24,25 @@ inline constexpr Level kCompiledLevel = Level::Info;
 
 void setLevel(Level level);
 Level getLevel();
+
+// One line of the log.
+struct Record {
+  Level level = Level::Info;
+  // From print, so it has no location.
+  bool plain = false;
+  // Since the program started.
+  double seconds = 0.0;
+  std::string_view file;
+  uint32_t line = 0;
+  std::string_view message;
+};
+
+using Sink = void (*)(void *user, const Record &record);
+
+// Calls sink with every line, on the thread that logged it, one line at a
+// time. A sink must not log. Returns false when there is no room for it.
+bool addSink(Sink sink, void *user);
+void removeSink(Sink sink, void *user);
 
 namespace detail {
 extern std::atomic<Level> g_level;
@@ -41,6 +62,7 @@ template <typename... Args> struct FormatWithLocation {
 };
 
 void vwrite(Level level, std::source_location location, std::string_view fmt, std::format_args args);
+void vprint(std::string_view fmt, std::format_args args);
 } // namespace detail
 
 // Args are deduced from the arguments only, like std::format_string.
@@ -76,4 +98,12 @@ template <typename... Args> void error(Format<Args...> fmt, Args &&...args) {
   detail::write<Level::Error>(fmt, std::forward<Args>(args)...);
 }
 
+// Output that someone asked for, such as a console command's. Has no location
+// and shows at every level.
+template <typename... Args> void print(std::format_string<Args...> fmt, Args &&...args) {
+  detail::vprint(fmt.get(), std::make_format_args(args...));
+}
+
 } // namespace strafe::log
+
+#include "strafe/core/log.gen.h"

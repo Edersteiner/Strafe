@@ -22,7 +22,7 @@ namespace strafe::renderer {
 
 class Renderer;
 
-enum class DebugView : std::int8_t { None, Wireframe, Normals, DrawId, Count };
+enum class [[reflect]] DebugView : std::int8_t { None, Wireframe, Normals, DrawId, Count [[skip]] };
 
 } // namespace strafe::renderer
 
@@ -72,3 +72,5 @@ private:
 };
 
 } // namespace strafe
+
+#include "strafe/renderer.gen.h"

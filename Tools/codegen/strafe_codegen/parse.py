@@ -15,7 +15,19 @@ import tree_sitter
 import tree_sitter_cpp
 
 from .diagnostics import Diagnostics
-from .model import Argument, Attribute, Enum, Enumerator, Field, Header, Location, Record
+from .model import (
+    Argument,
+    Attribute,
+    Enum,
+    Enumerator,
+    Field,
+    Function,
+    Header,
+    KnownAttributes,
+    Location,
+    Parameter,
+    Record,
+)
 
 _LANGUAGE = tree_sitter.Language(tree_sitter_cpp.language())
 
@@ -58,6 +70,11 @@ STANDARD_ATTRIBUTES = frozenset(
 )
 
 
+_NONE_KNOWN = KnownAttributes(frozenset(), frozenset())
+
+_FUNCTION_NODES = ("declaration", "field_declaration", "function_definition")
+
+
 def _parser() -> tree_sitter.Parser:
     return tree_sitter.Parser(_LANGUAGE)
 
@@ -67,7 +84,7 @@ class _Context:
     header: Header
     source: bytes
     diagnostics: Diagnostics
-    known_attributes: frozenset[str]
+    known: KnownAttributes
     enum_attributes: dict[int, list[Attribute]]  # By the byte offset of the `enum` keyword.
     enumerator_attributes: dict[int, list[Attribute]]  # By the byte offset of the enumerator's name.
     consumed: set[int]  # node_ids of our attributes that landed on something modelled.
@@ -85,9 +102,9 @@ class _Context:
         return self.source[node.start_byte : node.end_byte].decode("utf-8")
 
 
-def parse_header(header: Header, known_attributes: frozenset[str], diagnostics: Diagnostics) -> None:
-    """Fills header.records and header.enums with every type that carries one of
-    our attributes, on itself or on a field."""
+def parse_header(header: Header, known: KnownAttributes, diagnostics: Diagnostics) -> None:
+    """Fills the header with every function that carries one of our attributes,
+    and every type that does, on itself or on a member."""
     source = header.text.encode("utf-8")
     enum_attributes: dict[int, list[Attribute]] = {}
     enumerator_attributes: dict[int, list[Attribute]] = {}
@@ -111,7 +128,7 @@ def parse_header(header: Header, known_attributes: frozenset[str], diagnostics: 
             blank(start, end)
 
     tree = _parser().parse(bytes(blanked))
-    context = _Context(header, source, diagnostics, known_attributes, enum_attributes, enumerator_attributes, set())
+    context = _Context(header, source, diagnostics, known, enum_attributes, enumerator_attributes, set())
     _walk(context, tree.root_node, [], is_template=False)
     _check_attributes(context, tree.root_node)
 
@@ -136,8 +153,8 @@ def _parse_detached_attributes(text: bytes, offset: int, header: Header, source:
     snippet = prefix + text + b" X {};"
     tree = _parser().parse(snippet)
     # Text comes from the snippet, locations from the real header.
-    snippet_context = _Context(header, snippet, Diagnostics(), frozenset(), {}, {}, set())
-    header_context = _Context(header, source, Diagnostics(), frozenset(), {}, {}, set())
+    snippet_context = _Context(header, snippet, Diagnostics(), _NONE_KNOWN, {}, {}, set())
+    header_context = _Context(header, source, Diagnostics(), _NONE_KNOWN, {}, {}, set())
     attributes: list[Attribute] = []
     for node in _descendants(tree.root_node, "attribute"):
         real_offset = offset + node.start_byte - len(prefix)
@@ -163,10 +180,12 @@ def _walk(context: _Context, node: tree_sitter.Node, scope: list[str], is_templa
             _walk(context, child, scope, is_template=True)
         elif kind in _RECORD_NODES or kind == "enum_specifier":
             _type(context, child, scope, is_template)
-        elif kind in ("declaration", "type_definition"):
+        elif kind in ("declaration", "type_definition", "function_definition"):
             type_node = child.child_by_field_name("type")
             if type_node is not None and (type_node.type in _RECORD_NODES or type_node.type == "enum_specifier"):
                 _type(context, type_node, scope, is_template)
+            if kind in _FUNCTION_NODES:
+                _function(context, child, scope, "public", is_template, record=None)
         elif kind.startswith("preproc_") or kind == "declaration_list":
             _walk(context, child, scope, is_template)
 
@@ -196,7 +215,7 @@ def _record(
         kind=kind,
         name=name,
         scope=scope,
-        attributes=_own_attributes(context, node),
+        attributes=_own_attributes(context, node, context.known.types),
         fields=[],
         location=context.location(name_node),
         end_offset=node.end_byte,
@@ -212,10 +231,13 @@ def _record(
             if type_node is not None and (type_node.type in _RECORD_NODES or type_node.type == "enum_specifier"):
                 _type(context, type_node, inner_scope, is_template=False)
             record.fields.extend(_fields(context, member, access))
+            _function(context, member, inner_scope, access, is_template, record=node)
         elif member.type in ("declaration", "type_definition"):
             type_node = member.child_by_field_name("type")
             if type_node is not None and (type_node.type in _RECORD_NODES or type_node.type == "enum_specifier"):
                 _type(context, type_node, inner_scope, is_template=False)
+        elif member.type == "function_definition":
+            _function(context, member, inner_scope, access, is_template, record=node)
         elif member.type in _RECORD_NODES or member.type == "enum_specifier":
             _type(context, member, inner_scope, is_template=False)
         elif member.type == "template_declaration":
@@ -244,7 +266,7 @@ def _fields(context: _Context, node: tree_sitter.Node, access: str) -> list[Fiel
     is_bitfield = any(c.type == "bitfield_clause" for c in node.children)
     qualifiers = [context.text(c) for c in node.children if c.type == "type_qualifier"]
     type_text = " ".join([*qualifiers, context.text(node.child_by_field_name("type"))])
-    attributes = _own_attributes(context, node)
+    attributes = _own_attributes(context, node, context.known.types)
     return [
         Field(
             name=context.text(name),
@@ -278,26 +300,101 @@ def _unwrap_declarator(node: tree_sitter.Node) -> tuple[tree_sitter.Node | None,
     return None, is_reference, False
 
 
+def _function(
+    context: _Context,
+    node: tree_sitter.Node,
+    scope: list[str],
+    access: str,
+    is_template: bool,
+    record: tree_sitter.Node | None,
+) -> None:
+    attributes = _own_attributes(context, node, context.known.functions)
+    declarator = node.child_by_field_name("declarator")
+    while declarator is not None and declarator.type in _DECLARATOR_WRAPPERS:
+        inner = declarator.child_by_field_name("declarator")
+        # A reference declarator doesn't name the one it wraps.
+        declarator = inner or next((c for c in declarator.named_children if c.type.endswith("declarator")), None)
+    if not attributes or declarator is None or declarator.type != "function_declarator":
+        return
+    name = declarator.child_by_field_name("declarator")
+    parameters = declarator.child_by_field_name("parameters")
+    if name is None or parameters is None or name.type not in ("identifier", "field_identifier"):
+        return
+
+    is_static = any(c.type == "storage_class_specifier" and context.text(c) == "static" for c in node.children)
+    context.header.functions.append(
+        Function(
+            name=context.text(name),
+            scope=scope,
+            attributes=attributes,
+            parameters=_parameters(context, parameters),
+            help=_comment_above(context, node),
+            location=context.location(name),
+            access=access,
+            is_member=record is not None and not is_static,
+            class_has_base=record is not None and any(c.type == "base_class_clause" for c in record.children),
+            is_template=is_template,
+        )
+    )
+    _consume(context, attributes)
+
+
+def _parameters(context: _Context, node: tree_sitter.Node) -> list[Parameter]:
+    found: list[Parameter] = []
+    for child in node.named_children:
+        if child.type not in ("parameter_declaration", "optional_parameter_declaration"):
+            continue
+        declarator = child.child_by_field_name("declarator")
+        if declarator is None and context.text(child) == "void":
+            continue
+        name = None
+        if declarator is not None:
+            name = next(_descendants(declarator, "identifier"), None)
+        found.append(
+            Parameter(
+                name=context.text(name) if name is not None else None,
+                has_default=child.type == "optional_parameter_declaration",
+            )
+        )
+    return found
+
+
+def _comment_above(context: _Context, node: tree_sitter.Node) -> str:
+    """The comment that ends on the line above, joined into one line."""
+    lines: list[str] = []
+    row = node.start_point[0]
+    comment = node.prev_sibling
+    while comment is not None and comment.type == "comment" and comment.end_point[0] == row - 1:
+        before = comment.prev_sibling
+        if before is not None and before.type != "comment" and before.end_point[0] == comment.start_point[0]:
+            break  # It trails whatever is before it on the same line.
+        row = comment.start_point[0]
+        text = context.text(comment)
+        if text.startswith("/*"):
+            block = [line.strip().lstrip("*").strip() for line in text[2:-2].splitlines()]
+            lines[:0] = [line for line in block if line]
+        else:
+            lines.insert(0, text.lstrip("/").strip())
+        comment = before
+    return " ".join(line for line in lines if line and not line.startswith("NOLINT"))
+
+
 def _enum(
     context: _Context, node: tree_sitter.Node, name_node: tree_sitter.Node, body: tree_sitter.Node, scope: list[str]
 ) -> None:
-    attributes = context.enum_attributes.get(node.start_byte, [])
+    attributes = _ours(context.enum_attributes.get(node.start_byte, []), context.known.types)
     is_scoped = any(c.type in ("class", "struct") for c in node.children)
     underlying = node.child_by_field_name("base")
     enumerators: list[Enumerator] = []
-    for node in body.named_children:
-        name = node.child_by_field_name("name")
-        if node.type != "enumerator" or name is None:
+    for child in body.named_children:
+        name = child.child_by_field_name("name")
+        if child.type != "enumerator" or name is None:
             continue
         enumerators.append(
             Enumerator(
                 name=context.text(name),
-                value=context.text(node.child_by_field_name("value")) or None,
-                attributes=[
-                    a
-                    for a in context.enumerator_attributes.get(name.start_byte, [])
-                    if a.namespace is None and a.name in context.known_attributes
-                ],
+                value=context.text(child.child_by_field_name("value")) or None,
+                attributes=_ours(context.enumerator_attributes.get(name.start_byte, []), context.known.types),
                 location=context.location(name),
             )
         )
@@ -320,15 +417,17 @@ def _enum(
         _consume(context, enumerator.attributes)
 
 
-def _own_attributes(context: _Context, node: tree_sitter.Node) -> list[Attribute]:
-    """Our attributes written directly on this declaration."""
+def _ours(attributes: list[Attribute], names: frozenset[str]) -> list[Attribute]:
+    return [a for a in attributes if a.namespace is None and a.name in names]
+
+
+def _own_attributes(context: _Context, node: tree_sitter.Node, names: frozenset[str]) -> list[Attribute]:
+    """The attributes with these names written directly on this declaration."""
     attributes: list[Attribute] = []
     for declaration in (c for c in node.children if c.type == "attribute_declaration"):
         for attribute in (c for c in declaration.named_children if c.type == "attribute"):
-            parsed = _attribute(context, attribute, context.location(attribute), node_id=attribute.start_byte)
-            if parsed.namespace is None and parsed.name in context.known_attributes:
-                attributes.append(parsed)
-    return attributes
+            attributes.append(_attribute(context, attribute, context.location(attribute), node_id=attribute.start_byte))
+    return _ours(attributes, names)
 
 
 def _attribute(context: _Context, node: tree_sitter.Node, location: Location, node_id: int) -> Attribute:
@@ -370,8 +469,8 @@ def _check_attributes(context: _Context, root: tree_sitter.Node) -> None:
     for attribute in found:
         if attribute.namespace is not None or attribute.name in STANDARD_ATTRIBUTES:
             continue
-        if attribute.name not in context.known_attributes:
-            suggestion = _closest(attribute.name, context.known_attributes)
+        if attribute.name not in context.known.all:
+            suggestion = _closest(attribute.name, context.known.all)
             hint = f"; did you mean '{suggestion}'?" if suggestion else ""
             # Unscoped, so the name starts the attribute, and only the name is underlined.
             name = dataclasses.replace(attribute.location, length=len(attribute.name.encode("utf-8")))
@@ -381,7 +480,7 @@ def _check_attributes(context: _Context, root: tree_sitter.Node) -> None:
                 attribute.location, f"'{attribute.name}' has no effect on this kind of declaration"
             )
 
-    names = context.known_attributes
+    names = context.known.all
     for error in _descendants(root, "ERROR"):
         text = context.text(error)
         if "[[" in text and any(name in text for name in names):

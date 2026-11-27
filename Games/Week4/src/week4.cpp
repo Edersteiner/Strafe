@@ -173,3 +173,7 @@ void Week4::onRender() {
          .scale = Vec3(kMarkerSize)});
   }
 }
+
+void Week4::switchScene(size_t index) {
+  loadScene(index < kScenePaths.size() ? index : (scene_index_ + 1) % kScenePaths.size());
+}

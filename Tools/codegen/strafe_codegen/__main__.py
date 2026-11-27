@@ -2,7 +2,7 @@
 
     python -m strafe_codegen --project DIR --target NAME --out DIR
         [--root DIR ...] [--generators DIR ...] --inputs FILE
-        --register-function NAME [--zed-settings FILE]
+        --register-prefix NAME [--zed-settings FILE]
 
 --inputs names a file listing one header path per line, which keeps long
 header lists off the command line.
@@ -19,7 +19,7 @@ from typing import cast
 
 from . import generators, zed
 from .diagnostics import Diagnostics, note
-from .model import Header, Location, Module
+from .model import Header, KnownAttributes, Location, Module
 from .output import Output, write
 from .parse import parse_header
 
@@ -32,7 +32,7 @@ class _Arguments:
     roots: list[Path]
     generators: list[Path]
     inputs: Path
-    register_function: str
+    register_prefix: str
     zed_settings: Path | None
 
 
@@ -41,7 +41,10 @@ def main() -> int:
     project = arguments.project.resolve()
     roots = sorted({r.resolve() for r in arguments.roots}, key=lambda r: len(r.parts), reverse=True)
     plugins = generators.load([g.resolve() for g in arguments.generators])
-    known_attributes = frozenset[str]().union(*(g.ATTRIBUTES for g in plugins))
+    known_attributes = KnownAttributes(
+        types=frozenset[str]().union(*(g.ATTRIBUTES for g in plugins)),
+        functions=frozenset[str]().union(*(g.FUNCTION_ATTRIBUTES for g in plugins)),
+    )
     diagnostics = Diagnostics()
 
     paths = [Path(line.strip()).resolve() for line in arguments.inputs.read_text("utf-8").splitlines() if line.strip()]
@@ -64,7 +67,7 @@ def main() -> int:
         headers.append(header)
 
     module = Module(target=arguments.target, headers=headers)
-    output = Output(arguments.target, arguments.register_function)
+    output = Output(arguments.target, arguments.register_prefix)
     for plugin in plugins:
         plugin.generate(module, output, diagnostics)
     for header in output.headers_with_companions():
@@ -94,7 +97,7 @@ def _arguments() -> _Arguments:
     _ = parser.add_argument("--generators", type=Path, action="append", default=[], help="a folder of extra generators")
     _ = parser.add_argument("--inputs", type=Path, required=True, help="a file listing the headers to read")
     _ = parser.add_argument(
-        "--register-function", required=True, help="the name of the target's generated registration function"
+        "--register-prefix", required=True, help="what the target's generated registration functions start with"
     )
     _ = parser.add_argument(
         "--zed-settings", type=Path, default=None, help="Zed project settings to point at the [[file]] types"
@@ -108,7 +111,7 @@ def _arguments() -> _Arguments:
         roots=cast(list[Path], values["root"]),
         generators=cast(list[Path], values["generators"]),
         inputs=cast(Path, values["inputs"]),
-        register_function=cast(str, values["register_function"]),
+        register_prefix=cast(str, values["register_prefix"]),
         zed_settings=cast(Path | None, values["zed_settings"]),
     )
 

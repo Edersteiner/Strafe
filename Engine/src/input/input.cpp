@@ -80,7 +80,8 @@ void InputManager::handleEvents(const SDL_Event &event) {
   switch (event.type) {
   case SDL_EVENT_KEY_DOWN:
   case SDL_EVENT_KEY_UP:
-    if (event.key.scancode < kKeyCount) {
+    // A repeat isn't a press. Its real press may have gone to the UI.
+    if (event.key.scancode < kKeyCount && !event.key.repeat) {
       keys_[event.key.scancode] = event.key.down;
       keys_pressed_this_frame_[event.key.scancode] |= event.key.down;
     }
@@ -116,6 +117,9 @@ void InputManager::handleEvents(const SDL_Event &event) {
 }
 
 void InputManager::update() {
+  if (blocked_) {
+    mouse_delta_ = {};
+  }
   pollGamepads();
   updateActions();
 }
@@ -152,7 +156,7 @@ void InputManager::updateActions() {
     for (uint8_t player = 0; player < kMaxPlayers; ++player) {
       InputAction::PlayerState &state = action.players[player];
       const bool was_pressed = state.pressed;
-      state.axis_value = readAction(action, player);
+      state.axis_value = isActive(name) ? readAction(action, player) : 0.0f;
       state.pressed = state.axis_value >= kPressThreshold;
       state.just_pressed = state.pressed && !was_pressed;
       state.just_released = !state.pressed && was_pressed;
@@ -232,12 +236,73 @@ void InputManager::assignDevices() {
   // Rebaselines every player under the new owners, so an input held while it
   // changes hands fires no edges on the next update.
   for (auto &[name, action] : actions_) {
-    for (uint8_t player = 0; player < kMaxPlayers; ++player) {
-      InputAction::PlayerState &state = action.players[player];
-      state.axis_value = readAction(action, player);
-      state.pressed = state.axis_value >= kPressThreshold;
+    rebaseline(name, action);
+  }
+}
+
+void InputManager::rebaseline(std::string_view action_name, InputAction &action) const {
+  for (uint8_t player = 0; player < kMaxPlayers; ++player) {
+    InputAction::PlayerState &state = action.players[player];
+    state.axis_value = isActive(action_name) ? readAction(action, player) : 0.0f;
+    state.pressed = state.axis_value >= kPressThreshold;
+  }
+}
+
+bool InputManager::isActive(std::string_view action_name) const {
+  return !blocked_ || action_name.starts_with(kEngineActionPrefix);
+}
+
+void InputManager::setBlocked(bool blocked) {
+  if (blocked_ == blocked) {
+    return;
+  }
+  blocked_ = blocked;
+  for (auto &[name, action] : actions_) {
+    if (name.starts_with(kEngineActionPrefix)) {
+      continue;
+    }
+    if (!blocked) {
+      rebaseline(name, action);
+      continue;
+    }
+    // Released right away, since the game may read actions before the next
+    // update. A press from this frame was never seen, so it isn't released.
+    for (InputAction::PlayerState &state : action.players) {
+      const bool was_held = state.pressed && !state.just_pressed;
+      state = {.just_released = was_held || state.just_released};
     }
   }
+  mouse_delta_ = {};
+  applyMouseMode();
+}
+
+void InputManager::applyMouseMode() {
+  const bool enabled = wants_relative_mouse_ && !blocked_;
+  if (window_ && !SDL_SetWindowRelativeMouseMode(window_, enabled)) {
+    log::warn("Failed to set relative mouse mode: {}", SDL_GetError());
+  }
+}
+
+bool InputManager::isMouseCaptured() const { return window_ && SDL_GetWindowRelativeMouseMode(window_); }
+
+bool InputManager::pressesEngineAction(const SDL_Event &event) const {
+  InputSource source;
+  if (event.type == SDL_EVENT_KEY_DOWN) {
+    source = static_cast<Key>(event.key.scancode);
+  } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+    source = static_cast<MouseButton>(event.button.button);
+  } else {
+    return false;
+  }
+  return std::ranges::any_of(actions_, [&](const auto &entry) {
+    return entry.first.starts_with(kEngineActionPrefix) &&
+        std::ranges::find(entry.second.bindings, source, &InputBinding::source) != entry.second.bindings.end();
+  });
+}
+
+bool InputManager::isEngineActionJustPressed(std::string_view action_name) const {
+  const auto it = actions_.find(action_name);
+  return it != actions_.end() && std::ranges::any_of(it->second.players, &InputAction::PlayerState::just_pressed);
 }
 
 void InputManager::addGamepad(uint32_t id) {
@@ -289,6 +354,55 @@ void Input::bind(
   for (const input::InputSource &source : bindings) {
     it->second.bindings.push_back({.source = source, .axis_direction = axis_direction});
   }
+}
+
+void Input::rebind(
+    std::string_view action_name, std::initializer_list<input::InputSource> bindings,
+    input::AxisDirection axis_direction) {
+  auto &actions = manager().actions_;
+  if (const auto it = actions.find(action_name); it != actions.end()) {
+    it->second.bindings.clear();
+  }
+  bind(action_name, bindings, axis_direction);
+}
+
+void Input::unbind(std::string_view action_name, input::InputSource source) {
+  auto &actions = manager().actions_;
+  if (const auto it = actions.find(action_name); it != actions.end()) {
+    std::erase_if(it->second.bindings, [&](const input::InputBinding &binding) { return binding.source == source; });
+  }
+}
+
+void Input::unbind(std::string_view action_name) {
+  auto &actions = manager().actions_;
+  if (const auto it = actions.find(action_name); it != actions.end()) {
+    it->second.bindings.clear();
+  }
+}
+
+void Input::removeAction(std::string_view action_name) {
+  auto &actions = manager().actions_;
+  if (const auto it = actions.find(action_name); it != actions.end()) {
+    actions.erase(it);
+  }
+}
+
+bool Input::hasAction(std::string_view action_name) { return manager().actions_.contains(action_name); }
+
+std::vector<std::string> Input::actionNames() {
+  std::vector<std::string> names;
+  names.reserve(manager().actions_.size());
+  for (const auto &[name, action] : manager().actions_) {
+    names.push_back(name);
+  }
+  std::ranges::sort(names);
+  return names;
+}
+
+std::vector<input::InputBinding> Input::bindings(std::string_view action_name) {
+  const auto &actions = manager().actions_;
+  const auto it = actions.find(action_name);
+  return it != actions.end() ? it->second.bindings : std::vector<input::InputBinding>{};
 }
 
 void Input::setPlayerCount(uint8_t count) {
@@ -346,15 +460,11 @@ Vec2 Input::mouseDelta(uint8_t player_id) {
 }
 
 void Input::setRelativeMouseMode(bool enabled) {
-  SDL_Window *window = manager().window_;
-  if (window && !SDL_SetWindowRelativeMouseMode(window, enabled)) {
-    log::warn("Failed to set relative mouse mode: {}", SDL_GetError());
-  }
+  input::InputManager &state = manager();
+  state.wants_relative_mouse_ = enabled;
+  state.applyMouseMode();
 }
 
-bool Input::isRelativeMouseMode() {
-  SDL_Window *window = manager().window_;
-  return window && SDL_GetWindowRelativeMouseMode(window);
-}
+bool Input::isRelativeMouseMode() { return manager().wants_relative_mouse_; }
 
 } // namespace strafe

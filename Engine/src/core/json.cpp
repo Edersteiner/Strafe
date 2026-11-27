@@ -1,11 +1,11 @@
 #include "strafe/core/json.h"
 
 #include "strafe/core/log.h"
+#include "strafe/core/utils.h"
 
 #include <yyjson.h>
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -112,45 +112,6 @@ std::string describe(yyjson_val *value) {
   default:
     return "nothing";
   }
-}
-
-std::string lowercase(std::string_view text) {
-  std::string result(text);
-  std::ranges::transform(result, result.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return result;
-}
-
-size_t editDistance(std::string_view a, std::string_view b) {
-  std::vector<size_t> row(b.size() + 1);
-  for (size_t j = 0; j <= b.size(); ++j) {
-    row[j] = j;
-  }
-  for (size_t i = 1; i <= a.size(); ++i) {
-    size_t diagonal = row[0];
-    row[0] = i;
-    for (size_t j = 1; j <= b.size(); ++j) {
-      const size_t above = row[j];
-      row[j] = std::min({row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] == b[j - 1] ? 0 : 1)});
-      diagonal = above;
-    }
-  }
-  return row[b.size()];
-}
-
-// Close enough to be a typo of name: one edit, or a third of its length.
-std::optional<std::string_view> closest(std::string_view name, std::span<const std::string_view> candidates) {
-  const std::string lowered = lowercase(name);
-  const size_t limit = std::max<size_t>(1, name.size() / 3);
-  std::optional<std::string_view> best;
-  size_t best_distance = limit + 1;
-  for (const std::string_view candidate : candidates) {
-    const size_t distance = editDistance(lowered, lowercase(candidate));
-    if (distance < best_distance) {
-      best = candidate;
-      best_distance = distance;
-    }
-  }
-  return best;
 }
 
 void appendScalar(std::string &out, const yyjson_mut_val *value) {
@@ -422,7 +383,7 @@ bool Reader::forEachMember(std::string_view what, detail::FunctionRef<bool(std::
 void Reader::unknownName(
     std::string_view what, std::string_view name, std::span<const std::string_view> candidates) const {
   std::string message = std::format("'{}' isn't {}", name, what);
-  if (const std::optional<std::string_view> suggestion = detail::closest(name, candidates)) {
+  if (const std::optional<std::string_view> suggestion = utils::closestMatch(name, candidates)) {
     message += std::format("; did you mean '{}'?", *suggestion);
   } else if (!candidates.empty()) {
     message += "; expected one of ";

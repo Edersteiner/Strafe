@@ -85,6 +85,8 @@ bool processImguiEvent(const SDL_Event &event) {
   }
 }
 
+bool wantsText() { return ImGui::GetIO().WantTextInput; }
+
 void beginRenderImgui(bool input_captured) {
   // NoMouseCursorChange stops the SDL3 backend from showing the cursor that
   // relative mouse mode hides.

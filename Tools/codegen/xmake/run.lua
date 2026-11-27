@@ -59,9 +59,9 @@ end
 
 function main(target)
   local out = path.join(os.projectdir(), "build", ".gen", target:name())
-  -- The engine registers its types first, then the app, so each kind of
-  -- target defines its own function.
-  local register_function = target:rule("strafe.app") and "registerAppTypes" or "registerEngineTypes"
+  -- The engine registers its types and commands first, then the app, so each
+  -- kind of target defines its own functions.
+  local register_prefix = target:rule("strafe.app") and "registerApp" or "registerEngine"
   local roots = include_roots(target)
   local headers = { }
   for _, root in ipairs(roots) do
@@ -102,7 +102,7 @@ function main(target)
     local inputs = path.join(state_dir(), target:name() .. ".inputs")
     io.writefile(inputs, table.concat(headers, "\n") .. "\n")
 
-    local arguments = { "-m", "strafe_codegen", "--project", os.projectdir(), "--target", target:name(), "--out", out, "--inputs", inputs, "--register-function", register_function }
+    local arguments = { "-m", "strafe_codegen", "--project", os.projectdir(), "--target", target:name(), "--out", out, "--inputs", inputs, "--register-prefix", register_prefix }
     for _, root in ipairs(roots) do
       table.insert(arguments, "--root")
       table.insert(arguments, root)
@@ -117,8 +117,8 @@ function main(target)
     dependfile = path.join(state_dir(), target:name() .. ".d"),
     files = tool_files,
     values = fingerprint,
-    changed = not os.isfile(path.join(out, "src", "register_types.gen.cpp")),
+    changed = not os.isfile(path.join(out, "src", "register.gen.cpp")),
   })
 
-  target:add("files", path.join(out, "src", "register_types.gen.cpp"))
+  target:add("files", path.join(out, "src", "register.gen.cpp"))
 end

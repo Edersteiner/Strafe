@@ -5,8 +5,10 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace strafe {
 class Application;
@@ -20,6 +22,18 @@ inline constexpr uint8_t kMaxPlayers = 4;
 inline constexpr uint8_t kAnyPlayer = UINT8_MAX;
 
 using InputSource = std::variant<Key, MouseButton, GamepadButton, GamepadAxis>;
+
+struct InputBinding {
+  InputSource source;
+  // Which half of an axis counts. Keys and buttons ignore it.
+  AxisDirection axis_direction = AxisDirection::Positive;
+};
+
+// Actions with this prefix belong to the engine. They keep working while the
+// console blocks the game's, and the game can change or remove them too.
+inline constexpr std::string_view kEngineActionPrefix = "Engine.";
+// The key below Escape, whatever it types on the layout.
+inline constexpr std::string_view kToggleConsole = "Engine.ToggleConsole";
 
 } // namespace strafe::input
 
@@ -35,6 +49,21 @@ public:
   static void bind(
       std::string_view action_name, std::initializer_list<input::InputSource> bindings,
       input::AxisDirection axis_direction = input::AxisDirection::Positive);
+
+  // Replaces the action's bindings, creating it on first use.
+  static void rebind(
+      std::string_view action_name, std::initializer_list<input::InputSource> bindings,
+      input::AxisDirection axis_direction = input::AxisDirection::Positive);
+  // Removes the action's bindings to source, in both axis directions.
+  static void unbind(std::string_view action_name, input::InputSource source);
+  // Removes every binding. The action stays, and is never pressed.
+  static void unbind(std::string_view action_name);
+  static void removeAction(std::string_view action_name);
+
+  static bool hasAction(std::string_view action_name);
+  // Sorted by name.
+  static std::vector<std::string> actionNames();
+  static std::vector<input::InputBinding> bindings(std::string_view action_name);
 
   // Keyboard and mouse go to player 0, gamepads to players 1 and up in
   // connection order. With one player, player 0 owns every device.
@@ -57,7 +86,8 @@ public:
   // Pixels moved this frame, +y down. A distance, so don't scale it by delta
   // time. Zero for players who don't own the mouse.
   static Vec2 mouseDelta(uint8_t player_id = input::kAnyPlayer);
-  // Hides the cursor and keeps reporting motion past the window's edges.
+  // Hides the cursor and keeps reporting motion past the window's edges. The
+  // open console suspends the mode without changing this setting.
   static void setRelativeMouseMode(bool enabled);
   static bool isRelativeMouseMode();
 

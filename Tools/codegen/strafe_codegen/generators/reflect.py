@@ -11,10 +11,12 @@ import re
 
 from ..diagnostics import Diagnostics, note
 from ..model import Attribute, Enum, Field, Module, Record
+from ..naming import snake_case
 from ..output import Output
 
 NAME = "reflect"
 ATTRIBUTES = frozenset({"reflect", "property", "skip", "file"})
+FUNCTION_ATTRIBUTES: frozenset[str] = frozenset()
 
 FILE_TYPES = "file_types.txt"
 
@@ -36,12 +38,12 @@ def generate(module: Module, output: Output, diagnostics: Diagnostics) -> None:
                 extension = None
             if _validate(record, diagnostics):
                 sections.append(_record(record, extension))
-                output.register(header, f"registry.add<::{record.qualified_name}>();")
+                output.register_type(header, f"registry.add<::{record.qualified_name}>();")
         for enum in header.enums:
             _check_misplaced(enum.attributes, ("skip", "file"), "an enum", diagnostics)
             if _is_reflected(enum):
                 sections.append(_enum(enum))
-                output.register(header, f"registry.add<::{enum.qualified_name}>();")
+                output.register_type(header, f"registry.add<::{enum.qualified_name}>();")
             else:
                 for enumerator in enum.enumerators:
                     for attribute in _named(enumerator.attributes, "skip"):
@@ -91,7 +93,7 @@ def _file_extension(record: Record, diagnostics: Diagnostics) -> str | None:
         return None
     attribute = attributes[0]
     if not attribute.arguments:
-        return _snake_case(record.name)
+        return snake_case(record.name)
     argument = attribute.arguments[0]
     text = argument.value
     extension = text[1:-1] if len(text) >= 2 and text[0] == text[-1] == '"' else None
@@ -120,10 +122,6 @@ def _claim_extension(extension: str, record: Record, extensions: dict[str, Recor
         return False
     extensions[extension] = record
     return True
-
-
-def _snake_case(name: str) -> str:
-    return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", name).lower()
 
 
 def _validate(record: Record, diagnostics: Diagnostics) -> bool:

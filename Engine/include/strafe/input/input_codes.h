@@ -1,12 +1,14 @@
 #pragma once
 
+#include "strafe/core/reflect.h"
+
 #include <cstdint>
 
 namespace strafe::input {
 
 // Physical key positions, named after a US layout. The values are SDL's
 // scancodes, so converting either way is a cast.
-enum class Key : uint16_t {
+enum class [[reflect]] Key : uint16_t {
   Unknown = 0,
   A = 4,
   B = 5,
@@ -261,7 +263,7 @@ enum class Key : uint16_t {
 };
 
 // The values are SDL's mouse button indices.
-enum class MouseButton : uint8_t {
+enum class [[reflect]] MouseButton : uint8_t {
   Left = 1,
   Middle = 2,
   Right = 3,
@@ -271,7 +273,7 @@ enum class MouseButton : uint8_t {
 };
 
 // Named by position rather than label. The values are SDL's gamepad buttons.
-enum class GamepadButton : uint8_t {
+enum class [[reflect]] GamepadButton : uint8_t {
   South = 0, // Xbox A, PlayStation Cross
   East = 1,  // Xbox B, PlayStation Circle
   West = 2,  // Xbox X, PlayStation Square
@@ -301,7 +303,7 @@ enum class GamepadButton : uint8_t {
 };
 
 // The values are SDL's gamepad axes.
-enum class GamepadAxis : uint8_t {
+enum class [[reflect]] GamepadAxis : uint8_t {
   LeftX = 0,
   LeftY = 1,
   RightX = 2,
@@ -312,9 +314,11 @@ enum class GamepadAxis : uint8_t {
 
 // Which half of an axis a binding reads. Stick Y is positive downward, so up
 // is Negative. Triggers only go Positive.
-enum class AxisDirection : uint8_t {
+enum class [[reflect]] AxisDirection : uint8_t {
   Negative,
   Positive,
 };
 
 } // namespace strafe::input
+
+#include "strafe/input/input_codes.gen.h"

@@ -3,6 +3,7 @@
 #include "fly_camera.h"
 
 #include "strafe/app.h"
+#include "strafe/console/command.h"
 #include "strafe/renderer/material.h"
 #include "strafe/scene/scene.h"
 #include "strafe/scene/scene_renderer.h"
@@ -17,6 +18,9 @@ public:
   bool onInit() override;
   void onUpdate(float delta_seconds) override;
   void onRender() override;
+
+  // Switches to the scene at index, or the next one if index is out of bounds.
+  [[command]] void switchScene(size_t index);
 
 private:
   static constexpr uint8_t kPlayerCount = 2;

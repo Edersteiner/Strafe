@@ -12,6 +12,8 @@ void initializeImgui(Application &app);
 // Feeds the event to ImGui. Returns true if ImGui wants it, so the game
 // shouldn't see it. Releases are never consumed, so no key or button sticks.
 bool processImguiEvent(const SDL_Event &event);
+// Whether a text field has the keyboard.
+bool wantsText();
 // While input is captured (relative mouse mode), ImGui ignores the mouse and
 // keyboard, so nothing stays hovered and keys don't type into widgets.
 void beginRenderImgui(bool input_captured);
