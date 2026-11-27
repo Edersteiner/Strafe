@@ -2,17 +2,23 @@
 
 #include "strafe/console.h"
 #include "strafe/core/type_registry.h"
+#include "strafe/core/utils.h"
 #include "strafe/ecs/components.h"
 #include "strafe/ecs/registry.h"
+#include "strafe/ecs/system.h"
 #include "strafe/engine.h"
 #include "strafe/input.h"
 #include "strafe/world.h"
 
+#include <algorithm>
 #include <format>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace strafe::console {
 
@@ -35,6 +41,14 @@ std::string describe(const input::InputBinding &binding) {
         }
       },
       binding.source);
+}
+
+std::string join(std::span<const std::string_view> names) {
+  std::string text;
+  for (const std::string_view name : names) {
+    text += std::format("{}{}", text.empty() ? "" : ", ", name);
+  }
+  return text;
 }
 
 std::string_view describe(reflect::TypeKind kind) {
@@ -128,5 +142,52 @@ void entities() {
 }
 
 void destroy(ecs::Entity entity) { World::entities().destroy(entity); }
+
+bool Argument<SystemName>::read(ArgumentReader &in, SystemName &value) {
+  std::string_view word;
+  if (!in.readWord(word)) {
+    return false;
+  }
+  if (!Engine::systems().find(word)) {
+    return in.fail(std::format("there is no system '{}'", word));
+  }
+  value.name = word;
+  return true;
+}
+
+std::vector<std::string> Argument<SystemName>::choices() {
+  std::vector<std::string> names;
+  for (const auto &enumerator : reflect::TypeInfo<ecs::Stage>::enumerators) {
+    for (const ecs::SystemDesc *system : Engine::systems().stage(enumerator.value)) {
+      names.emplace_back(system->name);
+    }
+  }
+  std::ranges::sort(names);
+  return names;
+}
+
+void systems() {
+  for (const auto &enumerator : reflect::TypeInfo<ecs::Stage>::enumerators) {
+    Console::print("{}:", utils::toLower(enumerator.name));
+    for (const ecs::SystemDesc *system : Engine::systems().stage(enumerator.value)) {
+      std::string access;
+      if (!system->writes.empty()) {
+        access += std::format(", writes {}", join(system->writes));
+      }
+      if (!system->reads.empty()) {
+        access += std::format(", reads {}", join(system->reads));
+      }
+      Console::print("  {}{}{}", system->name, system->enabled ? "" : " (off)", access);
+    }
+  }
+}
+
+void systemEnabled(const SystemName &name, std::optional<bool> enabled) {
+  ecs::SystemDesc &found = *Engine::systems().find(name.name);
+  if (enabled) {
+    found.enabled = *enabled;
+  }
+  Console::print("{} is {}", found.name, found.enabled ? "on" : "off");
+}
 
 } // namespace strafe::console

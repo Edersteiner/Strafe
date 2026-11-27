@@ -6,6 +6,7 @@
 #include "strafe/core/type_registry.h"
 #include "strafe/ecs/component_registry.h"
 #include "strafe/ecs/registry.h"
+#include "strafe/ecs/system.h"
 #include "strafe/engine.h"
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
@@ -41,6 +42,7 @@ public:
   // Behind Engine.
   const reflect::TypeRegistry &types() const { return types_; }
   const ecs::ComponentRegistry &components() const { return components_; }
+  ecs::Schedule &systems() { return systems_; }
   float time() const;
   void quit() { running_ = false; }
 
@@ -63,6 +65,9 @@ private:
   reflect::TypeRegistry types_;
   ecs::ComponentRegistry components_;
   ecs::Registry entities_;
+  ecs::Schedule systems_;
+  // The latest frame's, for the render stage's systems.
+  float delta_seconds_ = 0.0f;
   console::ConsoleManager console_;
   // Text from a key that triggered an engine action is dropped so the key
   // that closes the console doesn't type into it.

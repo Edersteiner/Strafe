@@ -77,6 +77,13 @@ bool Application::registerGenerated() {
 
   generated::registerEngineComponents(components_);
   generated::registerAppComponents(components_);
+
+  generated::registerEngineSystems(systems_);
+  generated::registerAppSystems(systems_);
+  if (!systems_.finalize()) {
+    log::error("Failed to order the systems");
+    return false;
+  }
   return true;
 }
 
@@ -146,9 +153,10 @@ void Application::run() {
     console_.update();
 
     const uint64_t now_ns = SDL_GetTicksNS();
-    const float delta_seconds = static_cast<float>(now_ns - last_ticks_ns) / 1'000'000'000.0f;
+    delta_seconds_ = static_cast<float>(now_ns - last_ticks_ns) / 1'000'000'000.0f;
     last_ticks_ns = now_ns;
-    app_.onUpdate(delta_seconds);
+    app_.onUpdate(delta_seconds_);
+    systems_.run(ecs::Stage::Update, entities_, delta_seconds_);
 
     render();
   }
@@ -190,6 +198,7 @@ void Application::render() {
 
   ui::beginRenderImgui(input_.isMouseCaptured());
 
+  systems_.run(ecs::Stage::Render, entities_, delta_seconds_);
   app_.onRender();
   console_.draw();
 
@@ -240,6 +249,7 @@ Application &Engine::application() {
 
 const reflect::TypeRegistry &Engine::types() { return application().types(); }
 const ecs::ComponentRegistry &Engine::components() { return application().components(); }
+ecs::Schedule &Engine::systems() { return application().systems(); }
 float Engine::time() { return application().time(); }
 void Engine::quit() { application().quit(); }
 

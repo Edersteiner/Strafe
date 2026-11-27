@@ -47,6 +47,7 @@ class Output:
         self._types: _Registration = _Registration(f"{register_prefix}Types", "reflect::TypeRegistry")
         self._commands: _Registration = _Registration(f"{register_prefix}Commands", "console::CommandRegistry")
         self._components: _Registration = _Registration(f"{register_prefix}Components", "ecs::ComponentRegistry")
+        self._systems: _Registration = _Registration(f"{register_prefix}Systems", "ecs::Schedule")
 
     def section(self, header: Header, text: str, includes: tuple[str, ...] = ()) -> None:
         companion = self._companions.setdefault(header.include_path, _Companion(header))
@@ -75,6 +76,11 @@ class Output:
         """The same with a ComponentRegistry."""
         self._registration_includes.add(header.source_include_path)
         self._components.statements.append(statement)
+
+    def register_system(self, header: Header, statement: str) -> None:
+        """The same with a Schedule."""
+        self._registration_includes.add(header.source_include_path)
+        self._systems.statements.append(statement)
 
     def file(self, relative_path: str, text: str) -> None:
         if relative_path in self._files:
@@ -110,6 +116,7 @@ class Output:
                 "strafe/console/command.h",
                 "strafe/core/type_registry.h",
                 "strafe/ecs/component_registry.h",
+                "strafe/ecs/system.h",
                 *self._registration_includes,
             }
         )
@@ -126,6 +133,8 @@ class Output:
             *self._commands.render(),
             "",
             *self._components.render(),
+            "",
+            *self._systems.render(),
             "",
             "} // namespace strafe::generated",
         ]

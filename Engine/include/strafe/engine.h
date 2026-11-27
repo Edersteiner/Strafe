@@ -6,6 +6,7 @@ class Application;
 
 namespace ecs {
 class ComponentRegistry;
+class Schedule;
 } // namespace ecs
 
 namespace reflect {
@@ -22,6 +23,8 @@ public:
   static const reflect::TypeRegistry &types();
   // Every [[component]] of the engine and the app, by name or id.
   static const ecs::ComponentRegistry &components();
+  // Every [[system]], in the order each stage runs them.
+  static ecs::Schedule &systems();
 
   // Seconds since the engine started.
   static float time();
