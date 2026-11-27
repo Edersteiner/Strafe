@@ -3,11 +3,17 @@
 #include "strafe/console.h"
 #include "strafe/core/log.h"
 #include "strafe/core/utils.h"
+#include "strafe/ecs/components.h"
+#include "strafe/ecs/registry.h"
+#include "strafe/world.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <format>
+#include <string>
 #include <system_error>
+#include <vector>
 
 namespace strafe::console {
 
@@ -210,6 +216,43 @@ bool Argument<CommandName>::read(ArgumentReader &in, CommandName &value) {
 }
 
 std::vector<std::string> Argument<CommandName>::choices() { return Console::commands().names(); }
+
+bool Argument<ecs::Entity>::read(ArgumentReader &in, ecs::Entity &value) {
+  std::string_view word;
+  if (!in.readWord(word)) {
+    return false;
+  }
+  ecs::Registry &registry = World::entities();
+  const size_t colon = word.find(':');
+  uint32_t index = 0;
+  uint32_t generation = 0;
+  if (parseNumber(word.substr(0, colon), index)) {
+    if (colon == std::string_view::npos) {
+      value = registry.atIndex(index);
+    } else if (parseNumber(word.substr(colon + 1), generation)) {
+      value = {.index = index, .generation = generation};
+    } else {
+      return in.fail(std::format("'{}' isn't an entity; use a name, an index, or index:generation", word));
+    }
+  } else {
+    value = registry.find(word);
+  }
+  if (!registry.alive(value)) {
+    return in.fail(std::format("there is no entity {}", word));
+  }
+  return true;
+}
+
+std::vector<std::string> Argument<ecs::Entity>::choices() {
+  std::vector<std::string> names;
+  for (auto [entity, name] : World::entities().query<const Name>()) {
+    if (!name.value.empty() && std::ranges::find(names, name.value) == names.end()) {
+      names.push_back(name.value);
+    }
+  }
+  std::ranges::sort(names);
+  return names;
+}
 
 void detail::printResult(std::string_view text) { log::print("{}", text); }
 

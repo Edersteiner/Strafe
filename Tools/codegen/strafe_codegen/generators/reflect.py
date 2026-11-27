@@ -1,4 +1,5 @@
-"""Emits strafe::reflect::TypeInfo<T> for every [[reflect]] struct, class and enum.
+"""Emits strafe::reflect::TypeInfo<T> for every [[reflect]] struct, class and enum,
+and every [[component]], since components are saved field by field.
 
 [[skip]] leaves a field or enumerator out. [[file]] or [[file("ext")]] makes a
 record a file type with that extension, the snake_case type name by default,
@@ -40,7 +41,7 @@ def generate(module: Module, output: Output, diagnostics: Diagnostics) -> None:
                 sections.append(_record(record, extension))
                 output.register_type(header, f"registry.add<::{record.qualified_name}>();")
         for enum in header.enums:
-            _check_misplaced(enum.attributes, ("skip", "file"), "an enum", diagnostics)
+            _check_misplaced(enum.attributes, ("skip", "file", "component"), "an enum", diagnostics)
             if _is_reflected(enum):
                 sections.append(_enum(enum))
                 output.register_type(header, f"registry.add<::{enum.qualified_name}>();")
@@ -64,7 +65,9 @@ def _named(attributes: list[Attribute], name: str) -> list[Attribute]:
 
 
 def _is_reflected(item: Record | Enum) -> bool:
-    return bool(_named(item.attributes, "reflect"))
+    if isinstance(item, Enum):
+        return bool(_named(item.attributes, "reflect"))
+    return any(a.name in ("reflect", "component") for a in item.attributes)
 
 
 def _is_skipped(item: Field) -> bool:

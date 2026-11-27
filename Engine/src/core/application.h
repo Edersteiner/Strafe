@@ -4,6 +4,8 @@
 #include "input/input_manager.h"
 #include "strafe/app.h"
 #include "strafe/core/type_registry.h"
+#include "strafe/ecs/component_registry.h"
+#include "strafe/ecs/registry.h"
 #include "strafe/engine.h"
 #include "strafe/gfx/device.h"
 #include "strafe/gfx/framering.h"
@@ -18,7 +20,7 @@ namespace strafe {
 
 // The engine's main loop and everything it owns: the window, the GPU and the
 // renderer. Private to the engine; apps see it through run() and the
-// Console, Engine, Input and Renderer facades.
+// Console, Engine, Input, Renderer and World facades.
 class Application {
 public:
   explicit Application(App &app) : app_(app) {}
@@ -38,6 +40,7 @@ public:
 
   // Behind Engine.
   const reflect::TypeRegistry &types() const { return types_; }
+  const ecs::ComponentRegistry &components() const { return components_; }
   float time() const;
   void quit() { running_ = false; }
 
@@ -58,6 +61,8 @@ private:
   uint64_t start_ticks_ns_ = 0;
 
   reflect::TypeRegistry types_;
+  ecs::ComponentRegistry components_;
+  ecs::Registry entities_;
   console::ConsoleManager console_;
   // Text from a key that triggered an engine action is dropped so the key
   // that closes the console doesn't type into it.

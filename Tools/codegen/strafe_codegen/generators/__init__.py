@@ -23,7 +23,7 @@ from typing import Protocol, cast
 from ..diagnostics import Diagnostics
 from ..model import Module
 from ..output import Output
-from . import console, reflect
+from . import console, ecs, reflect
 
 
 class Generator(Protocol):
@@ -38,7 +38,7 @@ class Generator(Protocol):
     def generate(self, module: Module, output: Output, diagnostics: Diagnostics) -> None: ...
 
 
-BUILTIN: list[Generator] = [reflect, console]
+BUILTIN: list[Generator] = [reflect, console, ecs]
 
 
 def load(extra_folders: list[Path]) -> list[Generator]:

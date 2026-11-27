@@ -4,6 +4,10 @@ namespace strafe {
 
 class Application;
 
+namespace ecs {
+class ComponentRegistry;
+} // namespace ecs
+
 namespace reflect {
 class TypeRegistry;
 } // namespace reflect
@@ -16,6 +20,8 @@ public:
 
   // Every [[reflect]] type of the engine and the app, by name or id.
   static const reflect::TypeRegistry &types();
+  // Every [[component]] of the engine and the app, by name or id.
+  static const ecs::ComponentRegistry &components();
 
   // Seconds since the engine started.
   static float time();

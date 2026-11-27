@@ -2,6 +2,7 @@
 
 #include "strafe/console/command.h"
 #include "strafe/core/log.h"
+#include "strafe/ecs/entity.h"
 #include "strafe/renderer.h"
 
 #include <optional>
@@ -31,5 +32,11 @@ namespace strafe::console {
 
 // Lists the reflected types.
 [[command]] void types();
+
+// Lists the entities with their names and components.
+[[command]] void entities();
+
+// Destroys an entity and its components.
+[[command]] void destroy(ecs::Entity entity);
 
 } // namespace strafe::console

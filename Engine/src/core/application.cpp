@@ -6,6 +6,7 @@
 #include "strafe/input.h"
 #include "strafe/renderer.h"
 #include "strafe/ui/imgui_impl.h"
+#include "strafe/world.h"
 
 #include <cassert>
 #include <optional>
@@ -73,6 +74,9 @@ bool Application::registerGenerated() {
   console_.commands().setApp(app_);
   generated::registerEngineCommands(console_.commands());
   generated::registerAppCommands(console_.commands());
+
+  generated::registerEngineComponents(components_);
+  generated::registerAppComponents(components_);
   return true;
 }
 
@@ -81,6 +85,7 @@ void Application::bindFacades() {
   Engine::application_ = this;
   Input::manager_ = &input_;
   Renderer::renderer_ = &renderer_;
+  World::entities_ = &entities_;
 }
 
 void Application::unbindFacades() {
@@ -88,6 +93,7 @@ void Application::unbindFacades() {
   Engine::application_ = nullptr;
   Input::manager_ = nullptr;
   Renderer::renderer_ = nullptr;
+  World::entities_ = nullptr;
 }
 
 bool Application::initializeVulkan() {
@@ -203,6 +209,8 @@ void Application::shutdown() {
     app_.onShutdown();
   }
   unbindFacades();
+  // Components can hold renderer resources, so they go before the renderer.
+  entities_.clear();
 
   ui::shutdownImgui();
 
@@ -231,6 +239,7 @@ Application &Engine::application() {
 }
 
 const reflect::TypeRegistry &Engine::types() { return application().types(); }
+const ecs::ComponentRegistry &Engine::components() { return application().components(); }
 float Engine::time() { return application().time(); }
 void Engine::quit() { application().quit(); }
 

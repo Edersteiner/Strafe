@@ -3,6 +3,7 @@
 #include "strafe/app.h"
 #include "strafe/core/math.h"
 #include "strafe/core/reflect.h"
+#include "strafe/ecs/entity.h"
 
 #include <algorithm>
 #include <array>
@@ -108,6 +109,15 @@ template <> struct Argument<CommandName> {
   static constexpr std::string_view kType = "command";
   static constexpr size_t kWords = 1;
   static bool read(ArgumentReader &in, CommandName &value);
+  static std::vector<std::string> choices();
+};
+
+// An alive entity of the World, by its Name, by index, or as index:generation.
+template <> struct Argument<ecs::Entity> {
+  static constexpr std::string_view kType = "entity";
+  static constexpr size_t kWords = 1;
+  static bool read(ArgumentReader &in, ecs::Entity &value);
+  // The named entities.
   static std::vector<std::string> choices();
 };
 
